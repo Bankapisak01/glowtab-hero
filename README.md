@@ -34,14 +34,14 @@ Some Official Tabs (`GAME_SONGS` in `game.js`: LJS001, ART001, VT001) can be pla
 - `detect.js` — note detection and judging, no DOM (YIN pitch tracker + a tone-rise test against neighbouring semitones). Runs in the browser and in node.
 - `game.js` — microphone input, the demo bot, runs, coins, leaderboard, shop, panels. Leaderboard, wallet and shop are mock data in `localStorage['gt-game']`.
 - `node tools/test_detect.js [songId] [case,case]` — synthesises whole-song performances (perfect, human, every 2nd note, wrong pitch, silence) and prints what the detector judged. About 20 s per song.
-- Demo bot ("บอทมือโปร" / "บอทมือกลาง") plays the tab through the same detector, for reviewing without a guitar. The tab must be visible: a background tab is throttled and drops notes.
+- The game listens to the microphone only. For development, `?devbot=pro` or `?devbot=mid` routes a synthesised player into the same detector (nothing in the UI offers it). The tab must be visible: a background tab is throttled and drops notes.
 - A ranked run is the whole song at 100 % with no pause, seek or loop; anything else is a practice score.
 
 Spec: `../2026-11-23_GlowTab_Ranked_Game_Mode_Spec.md`. Not tested with a real guitar through a real microphone yet.
 
 ### Practice › ตรวจโน้ต (note check, no score)
 
-The "ตรวจโน้ต" toggle in the Practice docks runs the same detector on any song, at any speed, loops included, and only says right or wrong: the beat turns green or red on the tab (`atMark` in `tab.js`), the LED preview dot follows, and a small readout shows the note the microphone hears. No score, combo, coins or leaderboard. Marks stay until the note is judged again or the player seeks. `?bot=pro` or `?bot=mid` makes the toggle use the demo bot instead of the microphone.
+The "ตรวจโน้ต" toggle in the Practice docks runs the same detector on any song, at any speed, loops included, and only says right or wrong: the beat turns green or red on the tab (`atMark` in `tab.js`), the LED preview dot follows, and a small readout shows the note the microphone hears. No score, combo, coins or leaderboard. Marks stay until the note is judged again or the player seeks.
 
 ### Practice › Hold-On (one note at a time)
 

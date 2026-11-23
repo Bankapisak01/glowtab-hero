@@ -1,7 +1,7 @@
 /* GlowTab Ranked — the game layer on top of Hero Mode.
  * Some Official Tabs (GAME_SONGS) can be played for a score: the microphone hears the guitar, detect.js judges
  * every note against the tab, and a full run at 100 % posts to that song's weekly leaderboard and earns coins.
- *   input      microphone (getUserMedia), or the demo bot — a synthesised player routed into the same detector
+ *   input      microphone (getUserMedia); a synthesised player exists only as a developer test hook (?devbot=)
  *   scoring    PERFECT / GREAT / GOOD / MISS + combo multiplier (detect.js)
  *   ranked     whole song, 100 % speed, no pause, no seek; anything else is a practice score
  *   rewards    coins per run (capped) + a weekly rank payout; coins buy in-app items only
@@ -118,7 +118,9 @@ function gameSet(mode) {
 }
 const gameOn = s => G.mode === 'game' && !!GAME_SONGS[s.id];
 // Practice › ตรวจโน้ต: the same detector marks each note right or wrong on the tab — no score, no combo, any song, any speed, loops included
-const G_BOTQ = new URLSearchParams(location.search).get('bot');   // ?bot=pro|mid: the demo bot stands in for the microphone
+// The game listens to the microphone only. The synthesised player ("bot") is a developer test hook, off unless the
+// page is opened with ?devbot=pro|mid; nothing in the UI offers it.
+const G_BOTQ = (v => BOT[v] ? v : '')(new URLSearchParams(location.search).get('devbot'));
 const glistenOn = () => G.listen && (S.app.screen === 'player' || S.web.screen === 'player');
 const gready = () => G.mic === 'on' || G.mic === 'bot';
 
@@ -287,10 +289,8 @@ function gameReady(s) {
     : G.mic === 'bot' ? `<span class="chip or">${ic('bot')} เดโม: บอท${BOT[G.botLv].label}เล่นแทน<i class="g-lv"><i data-live="glevel"></i></i></span>`
       : `<button class="btn sm pri" data-act="gmic">${ic('mic')} เปิดไมค์</button>`;
   return `<div class="g-ready">
-      <div class="h-row">${mic}
-        <button class="btn sm ${G.mic === 'bot' && G.botLv === 'pro' ? 'on' : ''}" data-act="gbot" data-v="pro" title="สำหรับรีวิวโดยไม่มีกีตาร์: ระบบสังเคราะห์เสียงกีตาร์เล่นตาม tab แล้วส่งเข้าตัวตรวจโน้ตตัวเดียวกับไมค์">${ic('bot')} บอทมือโปร</button>
-        <button class="btn sm ${G.mic === 'bot' && G.botLv === 'mid' ? 'on' : ''}" data-act="gbot" data-v="mid">${ic('bot')} บอทมือกลาง</button></div>
-      ${G.mic === 'denied' ? `<p class="h-note" style="color:var(--red)">เบราว์เซอร์นี้ปิดสิทธิ์ไมค์อยู่ — เปิดหน้านี้ใน Chrome แล้วกด “อนุญาต” เมื่อถูกถาม หรือใช้บอทเดโม</p>` : ''}
+      <div class="h-row">${mic}${G_BOTQ && G.mic !== 'bot' ? `<button class="btn sm" data-act="gbot" data-v="${G_BOTQ}">${ic('bot')} dev bot</button>` : ''}</div>
+      ${G.mic === 'denied' ? `<p class="h-note" style="color:var(--red)">เบราว์เซอร์นี้ปิดสิทธิ์ไมค์อยู่ — เปิดหน้านี้ใน Chrome แล้วกด “อนุญาต” เมื่อถูกถาม</p>` : ''}
       <div class="h-row g-me"><span>${ic('trophy')} สัปดาห์นี้: ${b ? `<b>#${rank}</b> · ${gnum(b.score)} ${gstars(b.stars, 'sm')}` : 'ยังไม่มีคะแนน'}</span>
         <button class="lnk" data-act="gboard" data-id="${s.id}">Leaderboard</button><button class="lnk" data-act="gshop">${gcoin(GS.coins)} ร้านแลกของ</button></div>
     </div>`;
@@ -374,7 +374,7 @@ async function gholdToggle() {
 }
 async function glistenToggle() {
   if (G.listen) { G.listen = false; G.hold = false; G.hstep = false; G.run = null; gbotStop(); atMarkClear(); render(); return; }
-  if (G_BOTQ && BOT[G_BOTQ]) await gbotOn(G_BOTQ); else if (!gready()) await gmicOn();
+  if (G_BOTQ) await gbotOn(G_BOTQ); else if (G.mic !== 'on') await gmicOn();
   if (!gready()) { toast('ใช้ไมค์ไม่ได้ — เบราว์เซอร์นี้ปิดสิทธิ์ไมค์อยู่ · เปิดหน้านี้ใน Chrome แล้วกด “อนุญาต” เมื่อถูกถาม'); return; }
   G.listen = true; G.run = null; atMarkClear(); render();
   toast('ตรวจโน้ตเปิดแล้ว · โน้ตที่เล่นถูกเป็น<b style="color:#22c55e">สีเขียว</b> พลาดเป็น<b style="color:#FF6B6B">สีแดง</b> · ไม่มีคะแนน · ใส่หูฟังหรือปิดเสียง Guide');
@@ -388,7 +388,7 @@ function gameAction(a, d, sf) {
     case 'pskip': gholdSkip(); return true;
     case 'gmode': gameSet(d.v); render(); return true;
     case 'gmic': gmicOn(); return true;
-    case 'gbot': if (G.mic === 'bot' && G.botLv === d.v) { G.mic = 'off'; gbotStop(); render(); } else gbotOn(d.v); return true;
+    case 'gbot': if (!G_BOTQ) return true; if (G.mic === 'bot' && G.botLv === d.v) { G.mic = 'off'; gbotStop(); render(); } else gbotOn(d.v); return true;
     case 'hgame': G.panel = null; enterHero(d.id, sf); gameSet('game'); render(); return true;
     case 'gboard': if (E.playing) pause(); G.panel = { kind: 'board', sf, id: d.id, tab: 'week', back: G.panel && G.panel.kind === 'result' ? G.panel : null }; render(); return true;
     case 'gshop': if (E.playing) pause(); G.panel = { kind: 'shop', sf, back: G.panel && G.panel.kind === 'result' ? G.panel : null }; render(); return true;
@@ -398,7 +398,7 @@ function gameAction(a, d, sf) {
     case 'gbuy': { const x = G_SHOP.find(i => i.id === d.id); if (x && GS.coins >= x.c && !GS.owned.includes(x.id)) { GS.coins -= x.c; GS.owned.push(x.id); gsave(); toast(`แลก <b>${esc(x.n)}</b> แล้ว · เหลือ ${gnum(GS.coins)} เหรียญ`); } render(); return true; }
     case 'gagain': G.panel = null; G.result = null; G.run = null; seek(S.loop ? barTime(S.loop.a) : 0, false); render(); play(); return true;
     case 'toggle': if (G.hold && glistenOn() && S[sf].screen === 'player') { gholdPlay(); return true; }   // Hold-On: Play starts and stops the stepping, never the audio
-      if (S.songId && gameOn(song()) && S[sf].screen === 'hero' && !E.playing && !gready()) { toast('เปิดไมค์ก่อนเริ่ม Ranked (หรือเลือกบอทเดโม)'); return true; } return false;
+      if (S.songId && gameOn(song()) && S[sf].screen === 'hero' && !E.playing && !gready()) { toast('เปิดไมค์ก่อนเริ่ม Ranked'); return true; } return false;
     case 'hrestart': G.run = null; G.result = null; return false;
     case 'hero': if (G.mode === 'game') gameSet('jam'); return false;                 // the plain Hero button is always Jam
     case 'hexit': case 'htab': case 'back': case 'open': if (G.mode === 'game') gameSet('jam'); return false;
