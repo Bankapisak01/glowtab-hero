@@ -142,6 +142,6 @@
   const acc = run => { const tot = run.n[0] + run.n[1] + run.n[2] + run.n[3]; return tot ? (run.n[0] + run.n[1] * 0.8 + run.n[2] * 0.5) / tot : 0; };
   const stars = a => a >= 0.95 ? 3 : a >= 0.8 ? 2 : a >= 0.6 ? 1 : 0;
 
-  const api = { N, TUNING, hz, create, feed, tone, start, step, acc, stars, multOf, JUDGE, groups, maxScore };
+  const api = { N, TUNING, hz, create, feed, tone, start, step, heard, acc, stars, multOf, JUDGE, groups, maxScore };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.DET = api;
 })(typeof window !== 'undefined' ? window : globalThis);

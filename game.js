@@ -17,7 +17,7 @@ const GAME_ICONS = {
   bot: '<rect x="5" y="8" width="14" height="11" rx="3"/><path d="M12 4v4M9.5 13v2M14.5 13v2"/>',
 };
 const G = { mode: 'jam', mic: 'off' /* off | on | denied | bot */, botLv: 'pro', an: null, buf: null, det: null, node: null, stream: null, bus: null,
-  listen: false, run: null, result: null, panel: null /* {kind:'result'|'board'|'shop', sf, id, tab} */, lat: 0.06, pop: null, lastTs: 0, bi: 0, bstr: {}, bl: [], muted: null, level: 0 };
+  listen: false, hold: false, hw: null /* waiting on a note: {at} */, run: null, result: null, panel: null /* {kind:'result'|'board'|'shop', sf, id, tab} */, lat: 0.06, pop: null, lastTs: 0, bi: 0, bstr: {}, bl: [], muted: null, level: 0 };
 const BOT = { pro: { jit: 0.014, skip: 0, wrong: 0, label: 'มือโปร' }, mid: { jit: 0.04, skip: 0.06, wrong: 0.04, label: 'มือกลาง' } };
 const G_NOTE = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
 const G_J = [['PERFECT', '#A3E635'], ['GREAT', '#6FB1FF'], ['GOOD', '#F5B14A'], ['MISS', '#FF6B6B']];
@@ -130,6 +130,7 @@ function grunStart(s, ts) {
   G.run = DET.start(s, Math.max(a, ts - 0.05), b, !why); G.run.why = why; G.run.bot = G.mic === 'bot' ? G.botLv : '';
   G.result = null; G.pop = null; gbotStop(); G.bi = s.ev.findIndex(e => e.t0 >= ts - 0.01); if (G.bi < 0) G.bi = s.ev.length;
   if (G.det) { G.det.attackT = -9; G.det.noteT = -9; }
+  G.hw = null;
 }
 function gameFrame(s, t) {
   const prac = !gameOn(s) && glistenOn();
@@ -140,7 +141,8 @@ function gameFrame(s, t) {
     let p = 0; for (let i = DET.N - 1024; i < DET.N; i++) p = Math.max(p, Math.abs(G.buf[i])); G.level = Math.max(p, G.level * 0.9);
   }
   const live = E.playing && E.ctx.currentTime >= E.c0;
-  if (!live) {
+  if (prac && G.hold) { if (gready()) gholdFrame(s, t, ts); }
+  else if (!live) {
     if (!E.playing) { if (G.bl.length) gbotStop(); if (G.run && !G.run.done && G.run.ranked) { G.run.ranked = false; G.run.why = 'หยุดกลางเพลง'; } }
     if (G.an && gready()) DET.feed(G.det, G.buf, ts - G.lat);
   } else {
@@ -163,13 +165,55 @@ function gameFrame(s, t) {
   live2('gacc', r && r.i ? (DET.acc(r) * 100).toFixed(1) + '%' : '–');
   live2('gmic', G.det && G.det.note ? G_NOTE[G.det.note % 12] + (Math.floor(G.det.note / 12) - 1) : '–');
   if (prac) {   // right / wrong for the note just played, and nothing else
-    const p = G.pop, on = p && performance.now() - p.at < 900, txt = !on ? '' : p.j === 3 ? '✕ พลาด' : '✓ ถูก' + (Math.abs(p.dt) > 0.06 ? (p.dt < 0 ? ' · เร็วไป' : ' · ช้าไป') : '');
-    document.querySelectorAll('[data-live=pjudge]').forEach(el => { if (el.textContent !== txt) { el.textContent = txt; el.className = !on ? '' : p.j === 3 ? 'bad' : 'ok'; } });
+    const p = G.pop, on = G.hw || (p && performance.now() - p.at < 900), hg = G.hw && G.run && G.run.g[G.run.i];
+    const txt = !on ? '' : hg ? 'รอโน้ต: ' + hg.ev.map(e => `สาย ${e.str} เฟรต ${e.fret}`).join(' + ') : p.j === 3 ? '✕ พลาด' : p.held ? '✓ ผ่าน' : '✓ ถูก' + (Math.abs(p.dt) > 0.06 ? (p.dt < 0 ? ' · เร็วไป' : ' · ช้าไป') : '');
+    document.querySelectorAll('[data-live=pjudge]').forEach(el => { if (el.textContent !== txt) { el.textContent = txt; el.className = !on ? '' : hg ? 'wait' : p.j === 3 ? 'bad' : 'ok'; } });
   }
   document.querySelectorAll('[data-live=glevel]').forEach(el => el.style.width = Math.min(100, G.level * 260) + '%');
 }
 // the player moved the playhead: the attempt starts over from there
-function gameSeek() { G.run = null; gbotStop(); atMarkClear(); }
+function gameSeek() { G.run = null; G.hw = null; gbotStop(); atMarkClear(); }
+
+/* ---------- Practice › Hold-On: the song stops on a note until the player plays it ----------
+ * Played in time, the music never stops. Otherwise the playhead freezes on the note (a short grace after its beat),
+ * keeps listening, and carries on from that note once it is heard. The detector runs on the audio clock here,
+ * because song time stands still while waiting. */
+function gbotPluck(e, when) {
+  const c = E.ctx, src = c.createBufferSource(), g = c.createGain();
+  src.buffer = pluck(TUNING[e.str - 1] + e.fret); src.connect(g); g.connect(G.bus); g.gain.setValueAtTime(0.42, when);
+  src.start(when); src.stop(when + 2.3); G.bl.push(src);
+}
+function gholdResume(s, g) { G.hw = null; E.t = g.t + s.audioOffset; startSrc(E.ctx.currentTime + 0.02); G.lastTs = g.t; G.bi = s.ev.findIndex(e => e.t0 > g.t + 0.012); if (G.bi < 0) G.bi = s.ev.length; }
+function gholdFrame(s, t, ts) {
+  const now = E.ctx.currentTime - G.lat, d = G.det; DET.feed(d, G.buf, now);
+  if (!E.playing && !G.hw) { if (G.bl.length) gbotStop(); return; }      // paused by the player
+  if (E.playing && E.ctx.currentTime < E.c0) return;                      // count-in
+  if (!G.run || G.run.song !== s.id || (!G.hw && ts < G.lastTs - 0.25)) grunStart(s, ts);
+  if (!G.hw) G.lastTs = ts;
+  const r = G.run, w = G.hw; if (r.done) return;
+  if (G.mic === 'bot' && !w) gbotSched(s, t);
+  const g = r.g[r.i];
+  if (!w && ts < g.t - g.w) return;
+  if (g.open == null) { g.open = now; g.base = null; }
+  const T = g.t; g.t = g.open + g.w + 0.02; const th = DET.heard(r, g, d, G.buf, now); g.t = T;   // only sound made since the window opened counts
+  if (th != null) {
+    g.st = 1; for (const e of g.ev) e.gs = 1; d.attackT = -9;
+    atMark(g.ev[0].bar, g.ev[0].pos / 4, w ? 'at-late' : 'at-ok'); G.pop = { j: 0, dt: 0, held: !!w, at: performance.now() };
+    if (++r.i >= r.g.length) r.done = true;
+    if (w) gholdResume(s, g);
+    return;
+  }
+  if (!w && ts >= g.t + 0.12 * rate()) {   // not played: stop on the note and wait
+    E.t = g.t + s.audioOffset; stopSrc(); E.playing = false; E.countFrom = 0; G.hw = { at: now };
+    gbotStop(); G.bi = s.ev.findIndex(e => e.t0 > g.t + 0.012); if (G.bi < 0) G.bi = s.ev.length;
+  } else if (w && G.mic === 'bot' && !w.bot && now - w.at > 0.5) { w.bot = 1; for (const e of g.ev) gbotPluck(e, E.ctx.currentTime + 0.05); }   // the demo bot tries again
+}
+function gholdSkip() {
+  const r = G.run, s = S.songId && song(); if (!r || r.done || !s) return;
+  const g = r.g[r.i]; g.st = 2; for (const e of g.ev) e.gs = 2; atMark(g.ev[0].bar, g.ev[0].pos / 4, 'at-bad');
+  if (++r.i >= r.g.length) r.done = true;
+  if (G.hw) gholdResume(s, g);
+}
 // the audio reached the end: whatever was not played is a miss
 function gameSongEnd(s) { if (gameOn(s) && G.run && !G.result && !S.loop) gameFinish(true); }
 function gameFinish(fromEnd) {
@@ -302,9 +346,16 @@ function gameDetail(s) {
 
 /* ---------- Practice › ตรวจโน้ต ---------- */
 const listenTog = () => `<button class="tog ${G.listen ? 'on' : ''}" data-act="plisten" aria-pressed="${G.listen}" title="ฟังกีตาร์ผ่านไมค์ แล้วบอกว่าเล่นถูกหรือพลาดทีละโน้ต · ไม่มีคะแนน">${ic('mic')}<span>ตรวจโน้ต</span></button>`;
-const listenInfo = () => !G.listen ? '' : `<span class="pl-info">${ic(G.mic === 'bot' ? 'bot' : 'mic')} <b data-live="gmic">–</b><i class="g-lv"><i data-live="glevel"></i></i><b data-live="pjudge"></b></span>`;
+const listenInfo = () => !G.listen ? '' : `<span class="pl-info">${ic(G.mic === 'bot' ? 'bot' : 'mic')} <b data-live="gmic">–</b><i class="g-lv"><i data-live="glevel"></i></i><b data-live="pjudge"></b>${G.hold ? '<button class="lnk" data-act="pskip" title="ข้ามโน้ตที่กำลังรอ">ข้ามโน้ต</button>' : ''}</span>`;
+const holdTog = () => `<button class="tog ${G.hold ? 'on' : ''}" data-act="phold" aria-pressed="${G.hold}" title="เพลงหยุดรอที่โน้ต จนกว่าจะเล่นถูกจึงไปโน้ตต่อไป">${ic('pause', 1)}<span>Hold-On</span></button>`;
+async function gholdToggle() {
+  if (G.hold) { G.hold = false; G.hw = null; G.run = null; render(); return; }
+  if (!G.listen) { await glistenToggle(); if (!G.listen) return; }
+  G.hold = true; G.run = null; G.hw = null; atMarkClear(); render();
+  toast('Hold-On เปิดแล้ว · เพลงจะหยุดรอที่โน้ตจนกว่าจะเล่นถูก · <b style="color:#22c55e">เขียว</b> = ถูกตามจังหวะ <b style="color:#F5B14A">ส้ม</b> = ถูกหลังรอ');
+}
 async function glistenToggle() {
-  if (G.listen) { G.listen = false; G.run = null; gbotStop(); atMarkClear(); render(); return; }
+  if (G.listen) { G.listen = false; G.hold = false; G.hw = null; G.run = null; gbotStop(); atMarkClear(); render(); return; }
   if (G_BOTQ && BOT[G_BOTQ]) await gbotOn(G_BOTQ); else if (!gready()) await gmicOn();
   if (!gready()) { toast('ใช้ไมค์ไม่ได้ — อนุญาตไมค์ที่แถบที่อยู่ของเบราว์เซอร์ แล้วกด “ตรวจโน้ต” อีกครั้ง'); return; }
   G.listen = true; G.run = null; atMarkClear(); render();
@@ -315,6 +366,8 @@ async function glistenToggle() {
 function gameAction(a, d, sf) {
   switch (a) {
     case 'plisten': glistenToggle(); return true;
+    case 'phold': gholdToggle(); return true;
+    case 'pskip': gholdSkip(); return true;
     case 'gmode': gameSet(d.v); render(); return true;
     case 'gmic': gmicOn(); return true;
     case 'gbot': if (G.mic === 'bot' && G.botLv === d.v) { G.mic = 'off'; gbotStop(); render(); } else gbotOn(d.v); return true;
@@ -326,7 +379,8 @@ function gameAction(a, d, sf) {
     case 'gclose': G.panel = null; render(); return true;
     case 'gbuy': { const x = G_SHOP.find(i => i.id === d.id); if (x && GS.coins >= x.c && !GS.owned.includes(x.id)) { GS.coins -= x.c; GS.owned.push(x.id); gsave(); toast(`แลก <b>${esc(x.n)}</b> แล้ว · เหลือ ${gnum(GS.coins)} เหรียญ`); } render(); return true; }
     case 'gagain': G.panel = null; G.result = null; G.run = null; seek(S.loop ? barTime(S.loop.a) : 0, false); render(); play(); return true;
-    case 'toggle': if (S.songId && gameOn(song()) && S[sf].screen === 'hero' && !E.playing && !gready()) { toast('เปิดไมค์ก่อนเริ่ม Ranked (หรือเลือกบอทเดโม)'); return true; } return false;
+    case 'toggle': if (G.hw) { G.hw = null; render(); return true; }   // pressing pause while the song waits on a note really pauses
+      if (S.songId && gameOn(song()) && S[sf].screen === 'hero' && !E.playing && !gready()) { toast('เปิดไมค์ก่อนเริ่ม Ranked (หรือเลือกบอทเดโม)'); return true; } return false;
     case 'hrestart': G.run = null; G.result = null; return false;
     case 'hero': if (G.mode === 'game') gameSet('jam'); return false;                 // the plain Hero button is always Jam
     case 'hexit': case 'htab': case 'back': case 'open': if (G.mode === 'game') gameSet('jam'); return false;

@@ -42,3 +42,7 @@ Spec: `../2026-11-23_GlowTab_Ranked_Game_Mode_Spec.md`. Not tested with a real g
 ### Practice › ตรวจโน้ต (note check, no score)
 
 The "ตรวจโน้ต" toggle in the Practice docks runs the same detector on any song, at any speed, loops included, and only says right or wrong: the beat turns green or red on the tab (`atMark` in `tab.js`), the LED preview dot follows, and a small readout shows the note the microphone hears. No score, combo, coins or leaderboard. Marks stay until the note is judged again or the player seeks. `?bot=pro` or `?bot=mid` makes the toggle use the demo bot instead of the microphone.
+
+### Practice › Hold-On (wait for the right note)
+
+The "Hold-On" toggle (turns note check on too) stops the song on a note until it is heard: played in time the music never stops; otherwise the playhead freezes on the note 0.12 s after its beat, keeps listening, and carries on from that note. Green = right in time, orange = right after waiting, red = skipped with "ข้ามโน้ต". Play / Pause while waiting really pauses. `gholdFrame` in `game.js`; the detector runs on the audio clock there because song time stands still.

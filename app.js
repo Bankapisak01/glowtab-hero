@@ -323,7 +323,7 @@ function appPlayer() {
       <button class="playb" data-act="toggle" aria-label="Play / Pause">${ic(E.playing ? 'pause' : 'play', 1)}</button>
       <button class="ib" data-act="next" aria-label="Next section">${ic('next')}</button>
       <span class="time" data-live="time">0:00</span><div class="grow">${progress(s)}</div>
-      ${toggles(s, 'land')}${listenTog()}
+      ${toggles(s, 'land')}${listenTog()}${holdTog()}
       <button class="tog" data-act="mixer">${ic('mixer')}<span>${s.stems.length > 1 ? 'Band' : 'Audio'}</span></button>
     </div></div>${sheet}`;
   return `<div class="a-pl">
@@ -335,7 +335,7 @@ function appPlayer() {
     <div class="blk" style="padding-top:4px"><canvas data-fret height="104" style="height:104px"></canvas></div>
     <div class="blk row" style="padding-top:2px"><div class="pills grow">${pills}</div>${s.stems.length > 1 ? `<button class="btn sm" data-act="mixer">${ic('mixer')} Mixer</button>` : ''}</div>
     <div class="foot">
-      <div class="row" style="gap:6px">${toggles(s, false)}${listenTog()}</div>
+      <div class="row" style="gap:6px">${toggles(s, false)}${listenTog()}${holdTog()}</div>
       <div style="margin-top:8px">${progress(s)}<div class="row" style="justify-content:space-between"><span class="time" data-live="time">0:00</span><span class="time">${fmt(E.dur || barTime(s.bars))}</span></div></div>
       <div class="row" style="justify-content:center;gap:26px;margin-top:2px">
         <button class="ib" data-act="prev" aria-label="Previous section">${ic('prev')}</button>
@@ -372,7 +372,7 @@ function webPlayer() {
         ${s.sections.map(x => `<button class="sec ${S.loop && S.loop.secId === x.id ? 'sel' : ''}" data-act="sec" data-sec="${x.id}" data-secid="${x.id}"><span>${esc(x.label)} <small>bar ${x.start + 1}–${x.end + 1}</small></span>${dots(x.diff)}</button>`).join('')}</div>
     </div>
     <div class="w-fret"><div class="row" style="justify-content:space-between;margin-bottom:4px"><span class="muted" style="font-size:11.5px">LED preview · Bar <b data-live="bar" style="color:var(--text)">–</b> / ${s.bars} · <span data-live="secname">–</span></span>
-      ${listenInfo()}<span class="legend"><span><i style="background:var(--lime)"></i>ตอนนี้</span><span><i style="background:var(--orange)"></i>ถัดไป</span>${G.listen ? '<span><i style="background:#22c55e"></i>ถูก</span><span><i style="background:#FF6B6B"></i>พลาด</span>' : ''}</span></div><canvas data-fret height="92" style="height:92px"></canvas></div>
+      ${listenInfo()}<span class="legend"><span><i style="background:var(--lime)"></i>ตอนนี้</span><span><i style="background:var(--orange)"></i>ถัดไป</span>${G.listen ? '<span><i style="background:#22c55e"></i>ถูก</span><span><i style="background:#FF6B6B"></i>พลาด</span>' : ''}${G.hold ? '<span><i style="background:#F5B14A"></i>ถูกหลังรอ</span>' : ''}</span></div><canvas data-fret height="92" style="height:92px"></canvas></div>
     <div class="w-dock">
       <button class="ib" data-act="prev" aria-label="Previous section">${ic('prev')}</button>
       <button class="playb" data-act="toggle" aria-label="Play / Pause">${ic(E.playing ? 'pause' : 'play', 1)}</button>
@@ -380,7 +380,7 @@ function webPlayer() {
       <span class="time" data-live="time" style="width:34px;text-align:right">0:00</span><div class="grow">${progress(s)}</div><span class="time">${fmt(E.dur || barTime(s.bars))}</span>
       ${toggles(s, true)}
       <button class="tog ${S.follow ? 'on' : ''}" data-act="follow">${ic('follow')}<span>Follow</span></button>
-      ${listenTog()}
+      ${listenTog()}${holdTog()}
     </div></div>`;
 }
 
