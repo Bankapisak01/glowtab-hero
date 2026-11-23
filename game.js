@@ -17,7 +17,7 @@ const GAME_ICONS = {
   bot: '<rect x="5" y="8" width="14" height="11" rx="3"/><path d="M12 4v4M9.5 13v2M14.5 13v2"/>',
 };
 const G = { mode: 'jam', mic: 'off' /* off | on | denied | bot */, botLv: 'pro', an: null, buf: null, det: null, node: null, stream: null, bus: null,
-  listen: false, hold: false, hstep: false /* Hold-On is stepping */, fx: null, run: null, result: null, panel: null /* {kind:'result'|'board'|'shop', sf, id, tab} */, lat: 0.06, pop: null, lastTs: 0, bi: 0, bstr: {}, bl: [], muted: null, level: 0 };
+  listen: false, hold: false, hstep: false /* Hold-On is running */, hw: null /* Hero Hold-On: the band is stopped on a note */, fx: null, run: null, result: null, panel: null /* {kind:'result'|'board'|'shop', sf, id, tab} */, lat: 0.06, pop: null, lastTs: 0, bi: 0, bstr: {}, bl: [], muted: null, level: 0 };
 const BOT = { pro: { jit: 0.014, skip: 0, wrong: 0, label: 'มือโปร' }, mid: { jit: 0.04, skip: 0.06, wrong: 0.04, label: 'มือกลาง' } };
 const G_NOTE = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
 const G_J = [['PERFECT', '#A3E635'], ['GREAT', '#6FB1FF'], ['GOOD', '#F5B14A'], ['MISS', '#FF6B6B']];
@@ -106,14 +106,16 @@ function gunmute() {
   const m = S.mix[u.id]; if (m) for (const k in u.st) if (m[k]) m[k].mute = u.st[k];
   S.metro = u.metro;
 }
+// the guitar line is the player's: silence it so the microphone only hears them (the rest of the band keeps playing)
+function gmuteLead(s) {
+  if (G.muted) return; const m = S.mix[s.id]; G.muted = { id: s.id, st: {}, metro: S.metro };
+  for (const st of s.stems) if (['guide', 'artist', 'tabsynth'].includes(st.id)) { G.muted.st[st.id] = m[st.id].mute; m[st.id].mute = true; }
+}
 function gameSet(mode) {
   const s = S.songId && SONGS[S.songId]; if (mode === 'game' && !(s && GAME_SONGS[s.id])) mode = 'jam';
   gunmute(); gbotStop();
-  if (mode === 'game') {   // the guitar line is the player's: silence it so the microphone only hears them
-    const m = S.mix[s.id]; G.muted = { id: s.id, st: {}, metro: S.metro };
-    for (const st of s.stems) if (['guide', 'artist', 'tabsynth'].includes(st.id)) { G.muted.st[st.id] = m[st.id].mute; m[st.id].mute = true; }
-    if (s.stems.length === 1) S.metro = true;
-  }
+  if (mode === 'game') { gmuteLead(s); if (s.stems.length === 1) S.metro = true; }
+  if (mode === 'game') { G.hold = false; G.hstep = false; G.hw = null; }   // Ranked is played in time
   G.mode = mode; G.run = null; G.result = null; G.panel = null; applyMix();
 }
 const gameOn = s => G.mode === 'game' && !!GAME_SONGS[s.id];
@@ -121,7 +123,10 @@ const gameOn = s => G.mode === 'game' && !!GAME_SONGS[s.id];
 // The game listens to the microphone only. The synthesised player ("bot") is a developer test hook, off unless the
 // page is opened with ?devbot=pro|mid; nothing in the UI offers it.
 const G_BOTQ = (v => BOT[v] ? v : '')(new URLSearchParams(location.search).get('devbot'));
-const glistenOn = () => G.listen && (S.app.screen === 'player' || S.web.screen === 'player');
+// It also runs in Hero Mode › Jam (never in Ranked, which has its own rules).
+const glistenOn = () => G.listen && ['player', 'hero'].some(k => S.app.screen === k || S.web.screen === k);
+const gstepping = () => G.hold && G.hstep;
+const gholdHere = sf => G.hold && G.listen && S.songId && !gameOn(song()) && (S[sf].screen === 'player' || S[sf].screen === 'hero');
 const gready = () => G.mic === 'on' || G.mic === 'bot';
 
 /* ---------- one run ---------- */
@@ -178,7 +183,7 @@ function gameFrame(s, t) {
   document.querySelectorAll('[data-live=glevel]').forEach(el => el.style.width = Math.min(100, G.level * 260) + '%');
 }
 // the player moved the playhead: the attempt starts over from there
-function gameSeek() { G.run = null; gbotStop(); atMarkClear(); }
+function gameSeek() { G.run = null; G.hw = null; gbotStop(); atMarkClear(); }
 
 /* ---------- Practice › Hold-On: one note at a time, no backing track, no tempo ----------
  * Play starts stepping: the playhead sits on a note and only moves to the next one when that note is heard.
@@ -194,37 +199,63 @@ const gname = m => G_NOTE[m % 12] + (Math.floor(m / 12) - 1);
 function gholdFx() {
   document.querySelectorAll('.at-slot').forEach(sl => { if (!sl.getClientRects().length) return; const d = document.createElement('div'); d.className = 'ok-fx'; d.textContent = '✓ ถูก'; sl.appendChild(d); setTimeout(() => d.remove(), 650); });
 }
+/* Two flavours, picked by the screen:
+ *   Practice  — no audio at all, the playhead parks on each note (gholdStep)
+ *   Hero Mode — the backing track plays; it stops on a note that has not been played yet and goes on from that note
+ *               once it is heard (gholdFlow). The guitar line itself is muted, as in Ranked. Order and pitch only. */
+const gholdHero = () => S.app.screen === 'hero' || S.web.screen === 'hero';
+function gholdStop() { G.hstep = false; G.hw = null; gbotStop(); gunmute(); applyMix(); }
 function gholdPlay() {
-  if (E.playing) pause();
-  G.hstep = !G.hstep; G.run = null; gbotStop(); if (G.hstep) atMarkClear();
-  render();
+  if (G.hstep) { gholdStop(); if (E.playing) pause(); else render(); return; }
+  G.hstep = true; G.run = null; G.hw = null; gbotStop(); atMarkClear();
+  if (gholdHero()) { gmuteLead(song()); applyMix(); play(); } else { if (E.playing) pause(); render(); }
+}
+function gholdHit(r, g, d) {
+  g.st = 1; for (const e of g.ev) e.gs = 1; d.attackT = -9;
+  atMark(g.ev[0].bar, g.ev[0].pos / 4, 'at-ok'); G.fx = { ev: g.ev, at: performance.now() }; G.pop = { j: 0, dt: 0, at: performance.now() }; gholdFx();
+  if (++r.i >= r.g.length) r.done = true;
+}
+// a ringing string must not pass the next note: it takes a new pick attack, or a clear new pitch, made after the note came up
+function gholdHeard(r, g, d, now) {
+  if (now < g.open) return false;
+  const T = g.t; g.t = g.open + g.w + 0.02; const th = DET.heard(r, g, d, G.buf, now); g.t = T;
+  return th != null && (d.attackT >= g.open - 0.01 || (g.midi.length === 1 && d.conf > 0.8 && Math.abs(d.midi - g.midi[0]) < 0.5 && d.noteT >= g.open - 0.01));
+}
+function gholdResume(s, g) { G.hw = null; E.t = g.t + s.audioOffset; startSrc(E.ctx.currentTime + 0.02); G.lastTs = g.t; G.bi = s.ev.findIndex(e => e.t0 > g.t + 0.012); if (G.bi < 0) G.bi = s.ev.length; }
+function gholdFlow(s, t, ts, now, d) {
+  if (E.playing && E.ctx.currentTime < E.c0) return;                                   // count-in
+  if (!E.playing && !G.hw) { startSrc(E.ctx.currentTime + 0.03); return; }             // the player moved the playhead: carry on from there
+  if (!G.run || G.run.song !== s.id || (!G.hw && ts < G.lastTs - 0.25)) grunStart(s, ts);
+  if (!G.hw) G.lastTs = ts;
+  const r = G.run, w = G.hw; if (r.done) return;
+  if (G.mic === 'bot' && !w) gbotSched(s, t);
+  const g = r.g[r.i];
+  if (g.open == null) { g.open = now + 0.1; g.base = null; }                           // listens for the next note as soon as the one before is done
+  if (gholdHeard(r, g, d, now)) { gholdHit(r, g, d); if (w) gholdResume(s, g); return; }
+  if (!w && ts >= g.t + 0.1 * rate()) {                                                 // its beat has passed and it was not played: stop the band on it
+    E.t = g.t + s.audioOffset; stopSrc(); E.playing = false; E.countFrom = 0; G.hw = { at: now };
+    gbotStop(); G.bi = s.ev.findIndex(e => e.t0 > g.t + 0.012); if (G.bi < 0) G.bi = s.ev.length;
+  } else if (w && G.mic === 'bot' && !w.bot && now - w.at > 0.5) { w.bot = 1; for (const e of g.ev) gbotPluck(e, E.ctx.currentTime + 0.05); }
 }
 function gholdFrame(s, t, ts) {
   const now = E.ctx.currentTime - G.lat, d = G.det; DET.feed(d, G.buf, now);
   if (!G.hstep) return;
-  if (E.playing) { E.t = curT(); E.playing = false; stopSrc(); }             // stepping never runs the audio
+  if (gholdHero()) return gholdFlow(s, t, ts, now, d);
+  if (E.playing) { E.t = curT(); E.playing = false; stopSrc(); }             // Practice stepping never runs the audio
   if (!G.run || G.run.song !== s.id) grunStart(s, ts);
   const r = G.run;
   if (r.done) {
     if (S.loop) { E.t = barTime(S.loop.a); G.run = null; }                   // a loop starts over
-    else { G.hstep = false; toast('เล่นครบทุกโน้ตแล้ว'); setTimeout(render); }
+    else { gholdStop(); toast('เล่นครบทุกโน้ตแล้ว'); setTimeout(render); }
     return;
   }
   const g = r.g[r.i];
   if (g.open == null) {   // this note is now the one to play: park the playhead on it
-    g.open = now + 0.1; g.base = null;   // the note before is still filling the analysis window: do not listen yet
-    g.seen = d.attackT; E.t = g.t + s.audioOffset + 0.001;
-    if (G.mic === 'bot') for (const e of g.ev) gbotPluck(e, E.ctx.currentTime + 0.4);   // the demo bot answers after a moment
+    g.open = now + 0.1; g.base = null; g.seen = d.attackT; E.t = g.t + s.audioOffset + 0.001;
+    if (G.mic === 'bot') for (const e of g.ev) gbotPluck(e, E.ctx.currentTime + 0.4);
   }
-  if (now < g.open) return;
-  const T = g.t; g.t = g.open + g.w + 0.02; const th = DET.heard(r, g, d, G.buf, now); g.t = T;   // only sound made since the note came up counts
-  // a ringing string must not pass the next note: it takes a new pick attack, or a clear new pitch
-  const picked = d.attackT >= g.open - 0.01 || (g.midi.length === 1 && d.conf > 0.8 && Math.abs(d.midi - g.midi[0]) < 0.5 && d.noteT >= g.open - 0.01);
-  if (th != null && picked) {
-    g.st = 1; for (const e of g.ev) e.gs = 1; d.attackT = -9;
-    atMark(g.ev[0].bar, g.ev[0].pos / 4, 'at-ok'); G.fx = { ev: g.ev, at: performance.now() }; G.pop = null; gholdFx();
-    if (++r.i >= r.g.length) r.done = true;
-  } else if (g.midi.length === 1 && d.attackT > g.seen && now - d.attackT > 0.09 && d.conf > 0.85 && d.note && d.note !== g.midi[0]) {
+  if (gholdHeard(r, g, d, now)) gholdHit(r, g, d);
+  else if (now >= g.open && g.midi.length === 1 && d.attackT > g.seen && now - d.attackT > 0.09 && d.conf > 0.85 && d.note && d.note !== g.midi[0]) {
     g.seen = d.attackT; G.pop = { j: 3, heard: gname(d.note), at: performance.now() };   // a clear, different note
   }
 }
@@ -232,9 +263,11 @@ function gholdSkip() {
   const r = G.run; if (!G.hstep || !r || r.done) return;
   const g = r.g[r.i]; g.st = 2; for (const e of g.ev) e.gs = 2; atMark(g.ev[0].bar, g.ev[0].pos / 4, 'at-bad');
   if (++r.i >= r.g.length) r.done = true;
+  if (G.hw) gholdResume(S.songId && song(), g);
 }
 // the audio reached the end: whatever was not played is a miss
-function gameSongEnd(s) { if (gameOn(s) && G.run && !G.result && !S.loop) gameFinish(true); }
+function gameSongEnd(s) { if (G.hstep) gholdStop();
+  if (gameOn(s) && G.run && !G.result && !S.loop) gameFinish(true); }
 function gameFinish(fromEnd) {
   const r = G.run; if (!r || G.result) return;
   while (!r.done) { const g = r.g[r.i]; g.st = 2; g.j = 3; r.n[3]++; r.combo = 0; for (const e of g.ev) e.gs = 2; if (++r.i >= r.g.length) r.done = true; }
@@ -268,11 +301,20 @@ function gameFinish(fromEnd) {
 
 /* ---------- drawn on the Hero canvas: the judgement that just happened ---------- */
 function gameDraw(c, W, H, bTop, gap) {
+  const ranked = gameOn(song());
+  if (!ranked && gstepping() && G.run && !G.run.done) {   // Hold-On in Jam: which note the game is waiting for, and what the microphone hears
+    const g = G.run.g[G.run.i], fs0 = Math.max(12, Math.min(17, W * 0.03));
+    const t = 'เล่น: ' + g.ev.map(e => `สาย ${e.str} เฟรต ${e.fret}`).join(' + ') + (G.det && G.det.note ? `   ·   ได้ยิน ${gname(G.det.note)}` : '');
+    c.font = `700 ${fs0}px ${FONT}`; c.textAlign = 'center'; c.textBaseline = 'middle';
+    const tw = c.measureText(t).width + 24, y0 = bTop - gap * 1.05;
+    c.fillStyle = 'rgba(8,8,10,.78)'; rr(c, W / 2 - tw / 2, y0 - fs0, tw, fs0 * 2, fs0); c.fill();
+    c.fillStyle = '#F5B14A'; c.fillText(t, W / 2, y0 + 1);
+  }
   const p = G.pop; if (!p) return; const q = (performance.now() - p.at) / 620; if (q >= 1) return;
-  const [txt, col] = G_J[p.j], fs = Math.max(18, Math.min(34, W * 0.034)) * (1 + 0.25 * Math.max(0, 1 - q * 5));
+  const [txt, col] = ranked ? G_J[p.j] : p.heard ? ['✕ ยังไม่ใช่', '#FF6B6B'] : p.j === 3 ? ['✕ พลาด', '#FF6B6B'] : ['✓ ถูก', '#22c55e'], fs = Math.max(18, Math.min(34, W * 0.034)) * (1 + 0.25 * Math.max(0, 1 - q * 5));
   c.globalAlpha = 1 - q * q; c.textAlign = 'center'; c.textBaseline = 'middle'; c.font = `900 ${fs}px ${FONT}`;
-  c.shadowColor = col; c.shadowBlur = 18; c.fillStyle = col; c.fillText(txt, W / 2, bTop - gap * 1.5 - q * 10); c.shadowBlur = 0;
-  if (p.j < 3 && Math.abs(p.dt) > 0.03) { c.font = `700 ${fs * 0.42}px ${FONT}`; c.fillStyle = 'rgba(255,255,255,.75)'; c.fillText(p.dt < 0 ? 'เร็วไป' : 'ช้าไป', W / 2, bTop - gap * 1.5 + fs * 0.72 - q * 10); }
+  c.shadowColor = col; c.shadowBlur = 18; c.fillStyle = col; c.fillText(txt, W / 2, bTop - gap * (ranked ? 1.5 : 2.4) - q * 10); c.shadowBlur = 0;
+  if (ranked && p.j < 3 && Math.abs(p.dt) > 0.03) { c.font = `700 ${fs * 0.42}px ${FONT}`; c.fillStyle = 'rgba(255,255,255,.75)'; c.fillText(p.dt < 0 ? 'เร็วไป' : 'ช้าไป', W / 2, bTop - gap * 1.5 + fs * 0.72 - q * 10); }
   c.globalAlpha = 1;
 }
 
@@ -365,15 +407,18 @@ function gameDetail(s) {
 const listenTog = () => `<button class="tog ${G.listen ? 'on' : ''}" data-act="plisten" aria-pressed="${G.listen}" title="ฟังกีตาร์ผ่านไมค์ แล้วบอกว่าเล่นถูกหรือพลาดทีละโน้ต · ไม่มีคะแนน">${ic('mic')}<span>ตรวจโน้ต</span></button>`;
 const listenInfo = () => !G.listen ? '' : `<span class="pl-info">${ic(G.mic === 'bot' ? 'bot' : 'mic')} <b data-live="gmic">–</b><i class="g-lv"><i data-live="glevel"></i></i><b data-live="pjudge"></b>${G.hold ? '<button class="lnk" data-act="pskip" title="ข้ามโน้ตที่กำลังรอ">ข้ามโน้ต</button>' : ''}</span>`;
 const holdTog = () => `<button class="tog ${G.hold ? 'on' : ''}" data-act="phold" aria-pressed="${G.hold}" title="เล่นทีละโน้ต ไม่มี backing track ไม่จับจังหวะ: เล่นถูกโน้ตจึงไปโน้ตต่อไป">${ic('pause', 1)}<span>Hold-On</span></button>`;
+// Hero Mode › Jam: one button turns the whole thing on and off (it brings note checking with it)
+const heroHoldBtn = cls => `<button class="${cls} hold ${G.hold ? 'on' : ''}" data-act="hhold" aria-pressed="${G.hold}" title="Hold-On: backing track เล่นต่อ และหยุดรอที่โน้ตที่ยังไม่ได้เล่น — เล่นถูกโน้ตจึงไปต่อ">${ic('pause', 1)} Hold-On</button>`;
+const heroSkipBtn = () => G.hold ? `<button class="btn sm" data-act="pskip" title="ข้ามโน้ตที่กำลังรอ">ข้าม</button>` : '';
 async function gholdToggle() {
-  if (G.hold) { G.hold = false; G.hstep = false; G.run = null; gbotStop(); render(); return; }
+  if (G.hold) { const was = G.hstep; G.hold = false; gholdStop(); G.run = null; if (was && E.playing) pause(); else render(); return; }
   if (!G.listen) { await glistenToggle(); if (!G.listen) return; }
   if (E.playing) pause();
   G.hold = true; G.hstep = false; G.run = null; atMarkClear(); render();
-  toast('Hold-On เปิดแล้ว · กด ▶ แล้วเล่นทีละโน้ต · ถูกโน้ตจึงไปโน้ตต่อไป · ไม่มี backing track ไม่จับจังหวะ');
+  toast(gholdHero() ? 'Hold-On เปิดแล้ว · กด Start · backing track เล่นต่อ และหยุดรอที่โน้ตที่ยังไม่ได้เล่น' : 'Hold-On เปิดแล้ว · กด ▶ แล้วเล่นทีละโน้ต · ถูกโน้ตจึงไปโน้ตต่อไป · ไม่มี backing track ไม่จับจังหวะ');
 }
 async function glistenToggle() {
-  if (G.listen) { G.listen = false; G.hold = false; G.hstep = false; G.run = null; gbotStop(); atMarkClear(); render(); return; }
+  if (G.listen) { const was = G.hstep; G.listen = false; G.hold = false; gholdStop(); G.run = null; atMarkClear(); if (was && E.playing) pause(); else render(); return; }
   if (G_BOTQ) await gbotOn(G_BOTQ); else if (G.mic !== 'on') await gmicOn();
   if (!gready()) { toast('ใช้ไมค์ไม่ได้ — เบราว์เซอร์นี้ปิดสิทธิ์ไมค์อยู่ · เปิดหน้านี้ใน Chrome แล้วกด “อนุญาต” เมื่อถูกถาม'); return; }
   G.listen = true; G.run = null; atMarkClear(); render();
@@ -385,6 +430,7 @@ function gameAction(a, d, sf) {
   switch (a) {
     case 'plisten': glistenToggle(); return true;
     case 'phold': gholdToggle(); return true;
+    case 'hhold': if (G.hold) glistenToggle(); else gholdToggle(); return true;   // off = stop listening too
     case 'pskip': gholdSkip(); return true;
     case 'gmode': gameSet(d.v); render(); return true;
     case 'gmic': gmicOn(); return true;
@@ -397,11 +443,14 @@ function gameAction(a, d, sf) {
     case 'gclose': G.panel = null; render(); return true;
     case 'gbuy': { const x = G_SHOP.find(i => i.id === d.id); if (x && GS.coins >= x.c && !GS.owned.includes(x.id)) { GS.coins -= x.c; GS.owned.push(x.id); gsave(); toast(`แลก <b>${esc(x.n)}</b> แล้ว · เหลือ ${gnum(GS.coins)} เหรียญ`); } render(); return true; }
     case 'gagain': G.panel = null; G.result = null; G.run = null; seek(S.loop ? barTime(S.loop.a) : 0, false); render(); play(); return true;
-    case 'toggle': if (G.hold && glistenOn() && S[sf].screen === 'player') { gholdPlay(); return true; }   // Hold-On: Play starts and stops the stepping, never the audio
+    case 'toggle': if (gholdHere(sf)) { gholdPlay(); return true; }   // Hold-On: Play starts and stops the stepping, never the audio
       if (S.songId && gameOn(song()) && S[sf].screen === 'hero' && !E.playing && !gready()) { toast('เปิดไมค์ก่อนเริ่ม Ranked'); return true; } return false;
-    case 'hrestart': G.run = null; G.result = null; return false;
+    case 'hrestart': G.run = null; G.result = null;
+      if (gholdHere(sf)) { if (G.hstep) { gholdStop(); if (E.playing) pause(); } seek(S.loop ? barTime(S.loop.a) : 0, false); gholdPlay(); return true; }   // Hold-On restarts stepping, not the audio
+      return false;
     case 'hero': if (G.mode === 'game') gameSet('jam'); return false;                 // the plain Hero button is always Jam
-    case 'hexit': case 'htab': case 'back': case 'open': if (G.mode === 'game') gameSet('jam'); return false;
+    case 'hexit': case 'back': case 'open': if (G.hstep) gholdStop();   // leaving the song stops Hold-On
+    case 'htab': if (G.mode === 'game') gameSet('jam'); return false;
   }
   return false;
 }

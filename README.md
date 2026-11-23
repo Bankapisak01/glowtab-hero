@@ -46,3 +46,5 @@ The "ตรวจโน้ต" toggle in the Practice docks runs the same detect
 ### Practice › Hold-On (one note at a time)
 
 The "Hold-On" toggle (turns note check on too) changes what Play does: no audio at all, no tempo. The playhead parks on a note and moves to the next one only when that note is heard (`gholdFrame` in `game.js`); timing is never judged. A hit turns the beat green, pops "✓ ถูก" over the tab and pulses the LED preview dot. A note has to be picked anew — a string left ringing does not pass the next note. "ข้ามโน้ต" skips (red). Tapping the tab or picking a section moves the starting note; a loop repeats. The detector runs on the audio clock there because song time stands still.
+
+In **Hero Mode › Jam** the same toggle (in the READY overlay and the HUD, with "ข้าม") behaves differently, at the user's request: the backing track keeps playing (the guitar line is muted, as in Ranked), the next note is listened for as soon as the one before is done, and the band stops on a note only when its beat has passed and it has not been played, then goes on from that note (`gholdFlow`). Order and pitch only; nothing is scored.

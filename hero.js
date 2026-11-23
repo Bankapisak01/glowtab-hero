@@ -22,7 +22,7 @@ function heroHTML(sf) {
   const hb = COVER[s.id].hero || s.cover || COVER[s.id].img;
   const bg = hb ? `background-image:url(${hb})` : `background:${COVER[s.id].bg}`;
   const gm = gameOn(s);
-  const ov = gm && G.panel ? gameHeroPanel() : !E.playing && !E.loading ? `<div class="h-ov">
+  const ov = gm && G.panel ? gameHeroPanel() : !E.playing && !E.loading && !gstepping() ? `<div class="h-ov">
       <div class="h-brand">LITEJAM HERO</div>
       <div class="h-ttl">${fresh ? 'READY' : 'PAUSED'}</div>
       ${gameSeg(s)}${gm ? gameReady(s) : ''}
@@ -30,13 +30,14 @@ function heroHTML(sf) {
         <button class="btn pri" data-act="toggle" ${gm && !gready() ? 'disabled' : ''}>${ic('play', 1)} ${fresh ? 'Start' : 'Resume'}</button>
         ${fresh ? '' : `<button class="btn" data-act="hrestart">${ic('prev')} Restart</button>`}
         <button class="btn" data-act="htab">${ic('chord')} Practice (Tab)</button>
+        ${gm ? '' : heroHoldBtn('btn')}
         ${hFlipBtn('btn')}
         ${g3Btn('btn')}
         <button class="btn" data-act="hexit">${ic('x')} ออก</button>
       </div>
       <div class="h-opt">${toggles(s, 'land')}</div>
       <div class="secs h-secs" data-keep="h-secs-${sf}">${sectionChips(s)}</div>
-      <p class="h-note">${gm ? gameNote(s) : `Jam mode · ไม่มีคะแนน — เล่นตามโน้ตที่วิ่งเข้ามา ${S.led ? 'ไฟบนคอกีตาร์ติดตามสีสาย' : 'ต่อกีตาร์เพื่อให้ไฟบนคอติดตามสีสาย'}`}</p>
+      <p class="h-note">${gm ? gameNote(s) : G.hold ? 'Hold-On · backing track เล่นต่อ และหยุดรอที่โน้ตที่ยังไม่ได้เล่น — เล่นถูกโน้ตจึงไปต่อ · เสียงกีตาร์นำถูกปิดให้คุณเล่นแทน · ใส่หูฟัง' : `Jam mode · ไม่มีคะแนน — เล่นตามโน้ตที่วิ่งเข้ามา ${S.led ? 'ไฟบนคอกีตาร์ติดตามสีสาย' : 'ต่อกีตาร์เพื่อให้ไฟบนคอติดตามสีสาย'}`}</p>
     </div>` : '';
   const port = sf === 'app' && !S.app.land;
   return `<div class="hero ${sf} ${port ? 'port' : ''}">
@@ -45,13 +46,14 @@ function heroHTML(sf) {
     ${g3Slot(sf)}
     <div class="h-prog">${progress(s)}</div>
     <div class="h-hud">
-      <button class="h-btn" data-act="toggle" aria-label="Play / Pause">${ic(E.playing ? 'pause' : 'play', 1)}</button>
+      <button class="h-btn" data-act="toggle" aria-label="Play / Pause">${ic(E.playing || gstepping() ? 'pause' : 'play', 1)}</button>
       <div class="h-card"><b class="ell">${esc(s.title)}</b><small class="ell">${esc(s.artist)}</small>
         <div>BPM: <b>${s.bpm | 0}</b><i></i>Key: <b>${esc(s.key)}</b>${S.speed !== 100 ? `<i></i>${S.speed}%` : ''}</div></div>
       <div class="h-now"><span data-live="secname">–</span><b data-live="hchord"></b></div>
       ${gm ? gameHud() : ''}
       <span class="grow"></span>
-      <span class="h-tag ${gm ? 'rk' : ''}">${ic(gm ? 'trophy' : 'bolt', gm ? 0 : 1)} HERO · ${gm ? 'RANKED' : 'JAM'}</span>${ledChip()}
+      <span class="h-tag ${gm ? 'rk' : ''}">${ic(gm ? 'trophy' : 'bolt', gm ? 0 : 1)} HERO · ${gm ? 'RANKED' : G.hold ? 'HOLD-ON' : 'JAM'}</span>${ledChip()}
+      ${gm ? '' : heroHoldBtn('btn sm') + heroSkipBtn()}
       ${g3Btn('btn sm g3')}
       ${hFlipBtn('btn sm flip')}
       <button class="btn sm" data-act="htab" title="กลับไปดู Tab ที่ตำแหน่งเดิม">${ic('chord')} Tab</button>
@@ -166,7 +168,7 @@ function drawHero(cv, s, t) {
   c.beginPath(); c.moveTo(xb - tk, ya); c.lineTo(xb, ya); c.lineTo(xb, yb); c.lineTo(xb - tk, yb); c.stroke();
 
   // notes: far first — in Ranked a missed note goes grey and a hit note bursts white
-  const GM = gameOn(s);
+  const GM = gameOn(s) || G.listen;
   const pw = cell * (port ? 0.66 : 0.46), ph = Math.min(gap * 0.8, cell * (port ? 0.42 : 0.26));
   const noteAt = (e, k, a, lit) => {
     const dead = e.tech.includes('x'), open = e.fret === 0 && !dead, col = GM && e.gs === 2 ? '#5b5b62' : dead ? '#cfcfcf' : HSTR[e.str - 1];
