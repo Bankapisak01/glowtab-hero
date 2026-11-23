@@ -320,7 +320,7 @@ function appPlayer() {
       <div style="flex:none;width:104px;font-size:11px" class="muted">Bar <b data-live="bar" style="color:var(--text)">–</b> / ${s.bars}<br><span data-live="secname">–</span><div style="margin-top:5px">${abHTML()}</div></div></div>
     <div class="dock">
       <button class="ib" data-act="prev" aria-label="Previous section">${ic('prev')}</button>
-      <button class="playb" data-act="toggle" aria-label="Play / Pause">${ic(E.playing ? 'pause' : 'play', 1)}</button>
+      <button class="playb" data-act="toggle" aria-label="Play / Pause">${ic(E.playing || (G.hold && G.hstep) ? 'pause' : 'play', 1)}</button>
       <button class="ib" data-act="next" aria-label="Next section">${ic('next')}</button>
       <span class="time" data-live="time">0:00</span><div class="grow">${progress(s)}</div>
       ${toggles(s, 'land')}${listenTog()}${holdTog()}
@@ -339,7 +339,7 @@ function appPlayer() {
       <div style="margin-top:8px">${progress(s)}<div class="row" style="justify-content:space-between"><span class="time" data-live="time">0:00</span><span class="time">${fmt(E.dur || barTime(s.bars))}</span></div></div>
       <div class="row" style="justify-content:center;gap:26px;margin-top:2px">
         <button class="ib" data-act="prev" aria-label="Previous section">${ic('prev')}</button>
-        <button class="playb" data-act="toggle" aria-label="Play / Pause">${ic(E.playing ? 'pause' : 'play', 1)}</button>
+        <button class="playb" data-act="toggle" aria-label="Play / Pause">${ic(E.playing || (G.hold && G.hstep) ? 'pause' : 'play', 1)}</button>
         <button class="ib" data-act="next" aria-label="Next section">${ic('next')}</button></div>
     </div></div>${sheet}`;
 }
@@ -372,10 +372,10 @@ function webPlayer() {
         ${s.sections.map(x => `<button class="sec ${S.loop && S.loop.secId === x.id ? 'sel' : ''}" data-act="sec" data-sec="${x.id}" data-secid="${x.id}"><span>${esc(x.label)} <small>bar ${x.start + 1}–${x.end + 1}</small></span>${dots(x.diff)}</button>`).join('')}</div>
     </div>
     <div class="w-fret"><div class="row" style="justify-content:space-between;margin-bottom:4px"><span class="muted" style="font-size:11.5px">LED preview · Bar <b data-live="bar" style="color:var(--text)">–</b> / ${s.bars} · <span data-live="secname">–</span></span>
-      ${listenInfo()}<span class="legend"><span><i style="background:var(--lime)"></i>ตอนนี้</span><span><i style="background:var(--orange)"></i>ถัดไป</span>${G.listen ? '<span><i style="background:#22c55e"></i>ถูก</span><span><i style="background:#FF6B6B"></i>พลาด</span>' : ''}${G.hold ? '<span><i style="background:#F5B14A"></i>ถูกหลังรอ</span>' : ''}</span></div><canvas data-fret height="92" style="height:92px"></canvas></div>
+      ${listenInfo()}<span class="legend"><span><i style="background:var(--lime)"></i>ตอนนี้</span><span><i style="background:var(--orange)"></i>ถัดไป</span>${G.listen ? '<span><i style="background:#22c55e"></i>ถูก</span><span><i style="background:#FF6B6B"></i>พลาด</span>' : ''}</span></div><canvas data-fret height="92" style="height:92px"></canvas></div>
     <div class="w-dock">
       <button class="ib" data-act="prev" aria-label="Previous section">${ic('prev')}</button>
-      <button class="playb" data-act="toggle" aria-label="Play / Pause">${ic(E.playing ? 'pause' : 'play', 1)}</button>
+      <button class="playb" data-act="toggle" aria-label="Play / Pause">${ic(E.playing || (G.hold && G.hstep) ? 'pause' : 'play', 1)}</button>
       <button class="ib" data-act="next" aria-label="Next section">${ic('next')}</button>
       <span class="time" data-live="time" style="width:34px;text-align:right">0:00</span><div class="grow">${progress(s)}</div><span class="time">${fmt(E.dur || barTime(s.bars))}</span>
       ${toggles(s, true)}
@@ -443,6 +443,7 @@ function drawFret(cv, s, t) {
   let lo = 0, hi = s.onsets.length; while (lo < hi) { const m = (lo + hi) >> 1; if (s.onsets[m] > ts + 0.01) hi = m; else lo = m + 1; }
   const nt = s.onsets[lo], r = Math.min(8.5, gap * .48);
   if (nt != null && nt - ts < 4) for (const e of s.ev) { if (e.t0 > nt + 0.002) break; if (Math.abs(e.t0 - nt) < 0.002 && !e.tech.includes('t')) { const [x, y] = px(e); c.strokeStyle = '#F5B14A'; c.lineWidth = 2; c.beginPath(); c.arc(x, y, r - 1, 0, 7); c.stroke(); } }
+  if (G.fx) { const q = (performance.now() - G.fx.at) / 450; if (q >= 1) G.fx = null; else for (const e of G.fx.ev) { const [x, y] = px(e); c.strokeStyle = `rgba(34,197,94,${1 - q})`; c.lineWidth = 3; c.beginPath(); c.arc(x, y, r + q * 14, 0, 7); c.stroke(); c.fillStyle = `rgba(34,197,94,${0.8 * (1 - q)})`; c.beginPath(); c.arc(x, y, r, 0, 7); c.fill(); } }
   for (const e of s.ev) { if (e.t0 > ts) break; if (ts < e.t1) { const [x, y] = px(e), col = !G.listen || !e.gs ? '#A3E635' : e.gs === 1 ? '#22c55e' : '#FF6B6B'; c.shadowColor = col; c.shadowBlur = 12; c.fillStyle = col; c.beginPath(); c.arc(x, y, r, 0, 7); c.fill(); c.shadowBlur = 0; if (G.listen && e.gs === 1) { c.strokeStyle = '#fff'; c.lineWidth = 2; c.stroke(); } c.fillStyle = '#111'; c.font = '700 9.5px ' + FONT; c.textBaseline = 'middle'; c.fillText(e.tech.includes('x') ? 'x' : String(e.fret), x, y + .5); c.textBaseline = 'alphabetic'; } }
 }
 
@@ -571,7 +572,7 @@ document.addEventListener('pointerdown', ev => {
 document.addEventListener('pointermove', ev => { if (dragEl) progSeek(dragEl, ev); });
 document.addEventListener('pointerup', () => { dragEl = null; });
 document.addEventListener('keydown', ev => { if (ev.key === 'Enter' && ev.target.dataset && ev.target.dataset.inp === 'fname') { libAction('fsave', {}, surfaceOf(ev.target)); render(); } });
-document.addEventListener('keydown', ev => { if (ev.code === 'Space' && S.songId && !/INPUT|TEXTAREA/.test(ev.target.tagName)) { ev.preventDefault(); E.playing ? pause() : play(); } });
+document.addEventListener('keydown', ev => { if (ev.code === 'Space' && S.songId && !/INPUT|TEXTAREA/.test(ev.target.tagName)) { ev.preventDefault(); if (G.hold && glistenOn()) gholdPlay(); else E.playing ? pause() : play(); } });
 
 // deep link for review: ?view=web&song=LJS001
 const q = new URLSearchParams(location.search);
