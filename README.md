@@ -48,3 +48,11 @@ The "ตรวจโน้ต" toggle in the Practice docks runs the same detect
 The "Hold-On" toggle (turns note check on too) changes what Play does: no audio at all, no tempo. The playhead parks on a note and moves to the next one only when that note is heard (`gholdFrame` in `game.js`); timing is never judged. A hit turns the beat green, pops "✓ ถูก" over the tab and pulses the LED preview dot. A note has to be picked anew — a string left ringing does not pass the next note. "ข้ามโน้ต" skips (red). Tapping the tab or picking a section moves the starting note; a loop repeats. The detector runs on the audio clock there because song time stands still.
 
 In **Hero Mode › Jam** the same toggle (in the READY overlay and the HUD, with "ข้าม") behaves differently, at the user's request: the backing track keeps playing (the guitar line is muted, as in Ranked), the next note is listened for as soon as the one before is done, and the band stops on a note only when its beat has passed and it has not been played, then goes on from that note (`gholdFlow`). Order and pitch only; nothing is scored.
+
+### Real microphones (2026-11-23)
+
+- **Level:** `ggain` scales the input so its recent peak sits near 0.25 (×1 to ×25), because a laptop or phone microphone is far quieter than the test signal.
+- **Latency:** `glatLearn` compares each clear pick with the nearest tab note of the same pitch; the median of six offsets moves `G.lat`, kept per browser in `localStorage['gt-lat']`. Ranked judges timing, so a device that is 150 ms late would otherwise miss everything.
+- **Scores are microphone-only:** a run played by the dev test player is never ranked, saved or paid. Saved data moved to `localStorage['gt-game-2']`, which drops the scores the old demo bot left behind.
+- The result panel shows how many picks the microphone heard, the gain and the latency in use.
+- Dev test: `?devbot=pro&devlat=150&devgain=0.03` puts a late, quiet "microphone" in front of the detector. With it, 23 of the first 34 notes of the Prelude were missed while the latency was being learned (12 → 152 ms) and none of the next 133.

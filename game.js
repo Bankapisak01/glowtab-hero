@@ -17,6 +17,7 @@ const GAME_ICONS = {
   bot: '<rect x="5" y="8" width="14" height="11" rx="3"/><path d="M12 4v4M9.5 13v2M14.5 13v2"/>',
 };
 const G = { mode: 'jam', mic: 'off' /* off | on | denied | bot */, botLv: 'pro', an: null, buf: null, det: null, node: null, stream: null, bus: null,
+  offs: [], pk: 0, gain: 1, picks: 0, latMoved: 0, atkSeen: -9,
   listen: false, hold: false, hstep: false /* Hold-On is running */, hw: null /* Hero Hold-On: the band is stopped on a note */, fx: null, run: null, result: null, panel: null /* {kind:'result'|'board'|'shop', sf, id, tab} */, lat: 0.06, pop: null, lastTs: 0, bi: 0, bstr: {}, bl: [], muted: null, level: 0 };
 const BOT = { pro: { jit: 0.014, skip: 0, wrong: 0, label: 'มือโปร' }, mid: { jit: 0.04, skip: 0.06, wrong: 0.04, label: 'มือกลาง' } };
 const G_NOTE = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
@@ -30,8 +31,8 @@ const G_SHOP = [
 ];
 
 /* ---------- wallet + personal bests (mock, this browser only) ---------- */
-const GS = (() => { let v = null; try { v = JSON.parse(localStorage.getItem('gt-game')); } catch (e) {} return Object.assign({ coins: 0, owned: [], best: {}, all: {}, day: { d: '', coins: 0, runs: {} }, first: {} }, v || {}); })();
-const gsave = () => { try { localStorage.setItem('gt-game', JSON.stringify(GS)); } catch (e) {} };
+const GS = (() => { let v = null; try { v = JSON.parse(localStorage.getItem('gt-game-2')); } catch (e) {} return Object.assign({ coins: 0, owned: [], best: {}, all: {}, day: { d: '', coins: 0, runs: {} }, first: {} }, v || {}); })();
+const gsave = () => { try { localStorage.setItem('gt-game-2', JSON.stringify(GS)); } catch (e) {} };
 const gnum = n => Math.round(n).toLocaleString('en-US');
 const gcoin = n => `<span class="coin">${ic('coin')} ${gnum(n)}</span>`;
 // the week runs Monday 00:00 – Sunday 24:00, Asia/Bangkok
@@ -69,12 +70,34 @@ function gattach(node) {
   if (G.node) { try { G.node.disconnect(G.an); } catch (e) {} }
   G.node = node; node.connect(G.an);
 }
+/* A real microphone is quieter than the test signal and arrives late by an amount that differs per device.
+ *   level   — the input is scaled so its recent peak sits near 0.25 (never below ×1, never above ×25)
+ *   latency — every clear pick is compared with the nearest tab note of the same pitch; the median offset of the
+ *             last picks moves G.lat, and the value is kept for this browser. Ranked judges timing, so it needs this. */
+const glatLoad = d => { try { const v = parseFloat(localStorage.getItem('gt-lat')); if (v >= 0 && v <= 0.45) return v; } catch (e) {} return d; };
+function ggain() {
+  let p = 0; const b = G.buf, n = DET.N; for (let i = n - 2048; i < n; i++) { const a = b[i] < 0 ? -b[i] : b[i]; if (a > p) p = a; }
+  G.pk = Math.max(p, (G.pk || 0) * 0.9997);
+  const k = G.pk > 0.004 ? Math.min(25, Math.max(1, 0.25 / G.pk)) : 1; G.gain = k;
+  if (k > 1.01) for (let i = 0; i < n; i++) b[i] *= k;
+  G.level = Math.max(p * k, G.level * 0.9);
+}
+function glatLearn(r, d, tn) {
+  if (d.lastAtk === G.atkSeen || tn - d.lastAtk < 0.08) return;
+  const at = d.lastAtk - 0.004; G.atkSeen = d.lastAtk; G.picks = (G.picks || 0) + 1;
+  if (d.conf < 0.8 || !d.note) return;
+  let best = null; for (let i = Math.max(0, r.i - 6); i < Math.min(r.g.length, r.i + 6); i++) { const g = r.g[i], o = at - g.t; if (Math.abs(o) < 0.4 && g.midi.includes(d.note) && (best == null || Math.abs(o) < Math.abs(best))) best = o; }
+  if (best == null) return;
+  G.offs.push(best); if (G.offs.length < 6) return;
+  const m = G.offs.slice().sort((a, b) => a - b)[G.offs.length >> 1]; G.offs = [];
+  if (Math.abs(m) > 0.012) { G.lat = Math.max(0, Math.min(0.45, G.lat + m * rate() * 0.8)); G.latMoved = (G.latMoved || 0) + 1; try { if (G.mic === 'on') localStorage.setItem('gt-lat', G.lat.toFixed(3)); } catch (e) {} }
+}
 async function gmicOn() {
   await ensureCtx();
   try {
     // the browser's call-quality processing eats guitar notes, so it is turned off
     G.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
-    gattach(E.ctx.createMediaStreamSource(G.stream)); G.mic = 'on'; G.lat = (E.ctx.outputLatency || 0.02) + 0.045;
+    gattach(E.ctx.createMediaStreamSource(G.stream)); G.mic = 'on'; G.lat = glatLoad((E.ctx.outputLatency || 0.02) + 0.045); G.pk = 0; G.offs = [];
   } catch (e) { G.mic = 'denied'; }
   render();
 }
@@ -82,7 +105,10 @@ async function gbotOn(lv) {
   await ensureCtx();
   if (G.stream) { G.stream.getTracks().forEach(t => t.stop()); G.stream = null; }
   if (!G.bus) { G.bus = E.ctx.createGain(); G.bus.gain.value = 0.9; G.bus.connect(E.master); }
-  gattach(G.bus); G.mic = 'bot'; G.botLv = lv; G.lat = 0.012; render();
+  // dev only: ?devlat=150 (ms) and ?devgain=0.03 put a late, quiet "microphone" between the test player and the detector
+  const q = new URLSearchParams(location.search), dl = +q.get('devlat') || 0, dg = +q.get('devgain') || 1;
+  if (!G.botIn) { const g = E.ctx.createGain(), d = E.ctx.createDelay(1); g.gain.value = dg; d.delayTime.value = dl / 1000; G.bus.connect(g); g.connect(d); G.botIn = d; }
+  gattach(G.botIn); G.mic = 'bot'; G.botLv = lv; G.lat = 0.012; G.pk = 0; G.offs = []; render();
 }
 function gbotStop() { for (const x of G.bl) { try { x.stop(); } catch (e) {} } G.bl = []; G.bstr = {}; }
 // the bot plays the tab on the same plucked-string model the tab-only songs use, with human timing and mistakes
@@ -132,10 +158,10 @@ const gready = () => G.mic === 'on' || G.mic === 'bot';
 /* ---------- one run ---------- */
 function grunStart(s, ts) {
   const first = s.ev.find(e => !e.tech.includes('t')), fromStart = ts <= first.t0 - 0.2;
-  const why = S.loop ? 'เล่นเป็นท่อน' : S.speed !== 100 ? `ความเร็ว ${S.speed}%` : !fromStart ? 'ไม่ได้เริ่มจากต้นเพลง' : '';
+  const why = G.mic === 'bot' ? 'ตัวเล่นทดสอบ ไม่ใช่ไมค์' : S.loop ? 'เล่นเป็นท่อน' : S.speed !== 100 ? `ความเร็ว ${S.speed}%` : !fromStart ? 'ไม่ได้เริ่มจากต้นเพลง' : '';
   const a = S.loop ? barTime(S.loop.a) - s.audioOffset - 0.01 : ts - 0.05, b = S.loop ? barTime(S.loop.b + 1) - s.audioOffset - 0.01 : 1e9;
   G.run = DET.start(s, Math.max(a, ts - 0.05), b, !why); G.run.why = why; G.run.bot = G.mic === 'bot' ? G.botLv : '';
-  G.result = null; G.pop = null; gbotStop(); G.bi = s.ev.findIndex(e => e.t0 >= ts - 0.01); if (G.bi < 0) G.bi = s.ev.length;
+  G.result = null; G.pop = null; G.picks = 0; G.latMoved = 0; G.offs = []; gbotStop(); G.bi = s.ev.findIndex(e => e.t0 >= ts - 0.01); if (G.bi < 0) G.bi = s.ev.length;
   if (G.det) { G.det.attackT = -9; G.det.noteT = -9; }
 }
 function gameFrame(s, t) {
@@ -143,8 +169,7 @@ function gameFrame(s, t) {
   if (!gameOn(s) && !prac) return;
   const ts = t - s.audioOffset;
   if (G.an && gready()) {
-    G.an.getFloatTimeDomainData(G.buf);
-    let p = 0; for (let i = DET.N - 1024; i < DET.N; i++) p = Math.max(p, Math.abs(G.buf[i])); G.level = Math.max(p, G.level * 0.9);
+    G.an.getFloatTimeDomainData(G.buf); ggain();
   }
   const live = E.playing && E.ctx.currentTime >= E.c0;
   if (prac && G.hold) { if (gready()) gholdFrame(s, t, ts); }
@@ -156,7 +181,7 @@ function gameFrame(s, t) {
     G.lastTs = ts;
     if (G.mic === 'bot') gbotSched(s, t);
     if (gready()) {
-      const tn = ts - G.lat * rate(); DET.feed(G.det, G.buf, tn);
+      const tn = ts - G.lat * rate(); DET.feed(G.det, G.buf, tn); glatLearn(G.run, G.det, tn);
       const out = DET.step(G.run, G.det, G.buf, tn);
       if (out.length) { const g = out[out.length - 1]; G.pop = { j: g.j, dt: g.dt, at: performance.now() }; }
       if (prac) for (const g of out) atMark(g.ev[0].bar, g.ev[0].pos / 4, g.st === 1 ? 'at-ok' : 'at-bad');
@@ -180,7 +205,7 @@ function gameFrame(s, t) {
     } else if (fresh) { txt = p.j === 3 ? '✕ พลาด' : '✓ ถูก' + (Math.abs(p.dt) > 0.06 ? (p.dt < 0 ? ' · เร็วไป' : ' · ช้าไป') : ''); cls = p.j === 3 ? 'bad' : 'ok'; }
     document.querySelectorAll('[data-live=pjudge]').forEach(el => { if (el.textContent !== txt) { el.textContent = txt; el.className = cls; } });
   }
-  document.querySelectorAll('[data-live=glevel]').forEach(el => el.style.width = Math.min(100, G.level * 260) + '%');
+  document.querySelectorAll('[data-live=glevel]').forEach(el => el.style.width = Math.min(100, G.level * 300) + '%');
 }
 // the player moved the playhead: the attempt starts over from there
 function gameSeek() { G.run = null; G.hw = null; gbotStop(); atMarkClear(); }
@@ -273,7 +298,7 @@ function gameFinish(fromEnd) {
   while (!r.done) { const g = r.g[r.i]; g.st = 2; g.j = 3; r.n[3]++; r.combo = 0; for (const e of g.ev) e.gs = 2; if (++r.i >= r.g.length) r.done = true; }
   const id = r.song, w = gweek(), acc = DET.acc(r), stars = DET.stars(acc), fc = r.n[3] === 0;
   const res = { id, score: r.score, max: r.max, acc, stars, n: r.n.slice(), maxCombo: r.maxCombo, total: r.g.length, avg: r.hits ? r.sumDt / r.hits : 0,
-    ranked: r.ranked, why: r.why, bot: r.bot, fc, lines: [], earn: 0, note: '', pb: false, rank0: 0, rank: 0, n0: 0 };
+    ranked: r.ranked, why: r.why, bot: r.bot, fc, picks: G.picks || 0, lat: G.lat, gain: G.gain || 1, lines: [], earn: 0, note: '', pb: false, rank0: 0, rank: 0, n0: 0 };
   if (r.ranked) {
     const prev = gbest(id), entry = { score: r.score, acc, stars, at: Date.now() };
     res.rank0 = grank(id); res.pb = !prev || r.score > prev.score;
@@ -351,6 +376,7 @@ function gresultHTML() {
   return `<div class="h-brand">${kind}</div><div class="g-title ell">${esc(s.title)}</div>${gstars(r.stars)}
     <div class="g-score">${gnum(r.score)}${r.ranked && r.pb ? '<small>NEW BEST</small>' : ''}</div>
     <div class="g-stat"><span>ความแม่น <b>${(r.acc * 100).toFixed(1)}%</b></span><span>คอมโบสูงสุด <b>${r.maxCombo}</b>${r.fc ? ' · <b style="color:var(--lime)">FULL COMBO</b>' : ''}</span><span>จังหวะเฉลี่ย <b>${Math.abs(r.avg * 1000) < 8 ? 'ตรง' : (r.avg < 0 ? 'เร็ว ' : 'ช้า ') + Math.abs(r.avg * 1000).toFixed(0) + ' ms'}</b></span></div>
+    <div class="g-stat" style="font-size:11px"><span>${ic('mic')} ไมค์ได้ยินการดีด <b>${r.picks}</b> ครั้ง จาก ${r.total} โน้ต</span><span>ขยายเสียง <b>×${r.gain.toFixed(1)}</b></span><span>ชดเชยค่าหน่วง <b>${Math.round(r.lat * 1000)} ms</b></span></div>
     <div class="g-j">${G_J.map((j, i) => `<span style="color:${j[1]}">${j[0]} <b>${r.n[i]}</b></span>`).join('')}</div>
     ${coins}
     <div class="h-row"><button class="btn pri" data-act="gagain">${ic('play', 1)} เล่นอีกครั้ง</button><button class="btn" data-act="gboard" data-id="${r.id}">${ic('trophy')} Leaderboard</button>
