@@ -67,3 +67,5 @@ A design experiment, kept off `main`. The classic highway makes a guitarist tran
 - The "Neck 3D / Classic" button in the HUD and the READY overlay switches between the two for comparison.
 
 Code: `neckplay.js` (new), small hooks in `hero.js`, `guitar3d.js`, `app.js`, CSS at the end of `index.html`. The 3D module and the model files are untouched.
+
+Second pass (user feedback, 2026-11-24): neon hand box; every note of the current bar stays lit on the fretboard as a round badge with its note name (red = first note of the bar, blue = the rest); falling notes are note-name badges in string colours that grow from a small bead to full size as they land.

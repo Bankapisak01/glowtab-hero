@@ -7,6 +7,9 @@
  *          white box marks the frets the hand should cover.
  *   WHEN   height above the fretboard = time left. A scrolling tab strip under the neck (six strings, fret numbers
  *          moving to a "now" line) gives the rhythm and the notes after next, in the notation players already read.
+ *   BAR    every note of the bar being played stays lit on the fretboard as a round badge with its note name:
+ *          red = the first note of the bar, blue = the rest. Falling notes are the same badges in string colours,
+ *          small when they appear and full size when they land. The hand box is a neon frame.
  *   GAME   everything else stays: score, combo, PERFECT / GREAT pops, hit bursts, Ranked, Hold-On.
  * Classic stays one tap away (the "Neck 3D / Classic" button) for comparison.
  * Uses the stage of guitar3d.js: objects are added to the model's own group, so they follow the string-order mirror.
@@ -27,6 +30,18 @@ function nkDetach(o) {
   const nk = o.nk; if (!nk) return; o.nk = null;
   if (nk.grp.parent) nk.grp.parent.remove(nk.grp);
   nk.grp.traverse(x => { if (x.material) { if (x.material.map) x.material.map.dispose(); x.material.dispose(); } }); for (const g of nk.geo) g.dispose();
+  for (const k in nk.tex) nk.tex[k].dispose();
+}
+// a round badge with the note name in it (one texture per colour + label, made on first use)
+const NK_NOTE = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
+const nkName = e => e.tech.includes('x') ? '✕' : NK_NOTE[(TUNING[e.str - 1] + e.fret) % 12];
+function nkBadge(nk, color, label) {
+  const key = color + label; if (nk.tex[key]) return nk.tex[key];
+  const cv = document.createElement('canvas'); cv.width = cv.height = 128; const c = cv.getContext('2d');
+  c.beginPath(); c.arc(64, 64, 56, 0, 7); c.fillStyle = color; c.fill(); c.lineWidth = 7; c.strokeStyle = 'rgba(255,255,255,.95)'; c.stroke();
+  const n = parseInt(color.slice(1), 16), lum = ((n >> 16) * 0.299 + ((n >> 8) & 255) * 0.587 + (n & 255) * 0.114);
+  c.font = `800 ${label.length > 1 ? 58 : 70}px Inter,system-ui,sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillStyle = lum > 150 ? '#111' : '#fff'; c.fillText(label, 64, 68);
+  const t = new G3.T.CanvasTexture(cv); t.colorSpace = G3.T.SRGBColorSpace; return nk.tex[key] = t;
 }
 function nkAttach(o) {
   const T = G3.T, m = o.stage.model; if (o.nk && o.nk.model === m) return o.nk;
@@ -38,10 +53,13 @@ function nkAttach(o) {
   gStem.rotateX(Math.PI / 2);
   const mat = (o2 = {}) => new T.MeshBasicMaterial(Object.assign({ transparent: true, toneMapped: false, depthWrite: false }, o2));
   const mk = (geo, o2) => { const x = new T.Mesh(geo, mat(o2)); x.visible = false; x.renderOrder = 5; grp.add(x); return x; };
-  const pool = []; for (let i = 0; i < NK.pool; i++) pool.push({ gem: mk(gGem, { depthWrite: true }), ring: mk(gRing, { side: T.DoubleSide }), stem: mk(gStem) });
+  const spr = order => { const x = new T.Sprite(new T.SpriteMaterial({ transparent: true, depthTest: false, toneMapped: false })); x.visible = false; x.renderOrder = order; grp.add(x); return x; };
+  // bar lamps first (they sit on the fretboard), then the falling badges on top of them
+  const dots = []; for (let i = 0; i < 28; i++) dots.push(spr(6));
+  const pool = []; for (let i = 0; i < NK.pool; i++) pool.push({ gem: spr(8), ring: mk(gRing, { side: T.DoubleSide }), stem: mk(gStem) });
   const bars = []; for (let i = 0; i < 6; i++) bars.push(mk(gBar));
-  const box = new T.Line(new T.BufferGeometry().setAttribute('position', new T.BufferAttribute(new Float32Array(15), 3)), new T.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, toneMapped: false }));
-  box.frustumCulled = false; box.renderOrder = 4; grp.add(box);
+  // hand box: four neon tubes, each with a soft halo (a WebGL line is one pixel wide whatever you ask for)
+  const box = []; for (let i = 0; i < 4; i++) { const halo = mk(gBar, { color: 0x39ff14, opacity: 0.22 }), core = mk(gBar, { color: 0xb6ff3c, opacity: 1 }); halo.renderOrder = 3; core.renderOrder = 4; box.push([core, halo]); }
   // fret numbers along the edge of the neck nearest the camera, as on the classic board
   const nums = [], fr = m.report.fretComponents, lay = m.leds.layout;
   for (let f = 1; f < fr.length; f++) {
@@ -52,7 +70,7 @@ function nkAttach(o) {
     const x = (fr[f - 1].center[0] + fr[f].center[0]) / 2, b = lay.boundsAt(x);
     sprite.userData = { x, lo: b.min, hi: b.max, f }; sprite.scale.setScalar(sp * 1.5); sprite.renderOrder = 6; grp.add(sprite); nums.push(sprite);
   }
-  return o.nk = { model: m, grp, mounts, sp, pool, bars, box, nums, geo: [gGem, gRing, gStem, gBar, box.geometry] };
+  return o.nk = { model: m, grp, mounts, sp, pool, dots, bars, box, nums, tex: {}, geo: [gGem, gRing, gStem, gBar] };
 }
 const nkFretX = (fr, f) => { f = Math.max(0, Math.min(fr.length - 1, f)); const i = Math.floor(f), j = Math.min(fr.length - 1, i + 1); return fr[i].center[0] + (fr[j].center[0] - fr[i].center[0]) * (f - i); };
 
@@ -69,7 +87,7 @@ function nkCam(o) {
   st.controls.target.set(x, y, z); cam.up.set(0, 1, 0);
   cam.position.set(x - d * Math.sin(NK.az) * Math.cos(NK.el), y - d * Math.sin(NK.el), z + d * Math.cos(NK.az) * Math.cos(NK.el));
   cam.lookAt(st.controls.target);
-  cam.setViewOffset(r.width, r.height, 0, -r.height * (asp < 0.9 ? 0.06 : 0.05), r.width, r.height);   // the neck sits below centre: the room above is where the gems fall
+  cam.setViewOffset(r.width, r.height, 0, -r.height * (asp < 0.9 ? 0.06 : 0.1), r.width, r.height);   // the neck sits below centre: the room above is where the gems fall
   o.dist = d;
 }
 
@@ -84,7 +102,7 @@ function nkFrame(o, s, ts) {
     const dt = e.t0 - ts, dead = e.tech.includes('x'), isOpen = e.fret === 0 && !dead;
     // an open string has no fret to land on: it lands beside the hand, and the whole string lights up in the window
     const f = isOpen ? Math.max(0, Math.round(HV.lo) - 1) : e.fret, m = nk.mounts[e.str + ':' + f]; if (!m) continue;
-    col.set(GM && e.gs === 2 ? '#5b5b62' : dead ? '#cfcfcf' : HSTR[e.str - 1]);
+    const hex = GM && e.gs === 2 ? '#5b5b62' : dead ? '#cfcfcf' : HSTR[e.str - 1]; col.set(hex);
     const it = nk.pool[k];
     if (dt < 0) {   // landed: a burst on the fretboard (in a scored mode only for notes that were hit)
       const q = -dt / 0.32; if (q >= 1 || (GM && e.gs !== 1)) continue;
@@ -95,7 +113,10 @@ function nkFrame(o, s, ts) {
     const d = dt / NK.look, h = sp * NK.rise * d, a = Math.min(1, (1 - d) / 0.18);
     if (isOpen) open[e.str] = Math.max(open[e.str], 1 - d);
     it.gem.visible = it.ring.visible = it.stem.visible = true;
-    it.gem.position.copy(m.p).addScaledVector(m.n, h + sp * 0.36); it.gem.scale.setScalar(sp * (isOpen ? 0.3 : 0.42)); it.gem.material.color.copy(col); it.gem.material.opacity = a;
+    // starts as a small bead high up and grows into a full badge by the time it lands
+    const grow = 0.3 + 0.7 * Math.pow(1 - d, 1.6), tex = nkBadge(nk, hex, isOpen ? '0' : nkName(e));
+    if (it.gem.material.map !== tex) { it.gem.material.map = tex; it.gem.material.needsUpdate = true; }
+    it.gem.position.copy(m.p).addScaledVector(m.n, h + sp * 0.45); it.gem.scale.setScalar(sp * 1.6 * grow); it.gem.material.opacity = a;
     it.ring.position.copy(m.p).addScaledVector(m.n, 0.006); it.ring.scale.setScalar(sp * (0.56 + 1.7 * d)); it.ring.material.color.copy(col); it.ring.material.opacity = a * (0.95 - d * 0.5);
     it.stem.position.copy(m.p).addScaledVector(m.n, h / 2 + sp * 0.1); it.stem.scale.set(sp * 0.035, sp * 0.035, Math.max(1e-4, h)); it.stem.material.color.copy(col); it.stem.material.opacity = a * 0.4;
     k++;
@@ -109,10 +130,24 @@ function nkFrame(o, s, ts) {
     bar.position.set((xa + xb) / 2, m.p.y, m.p.z + sp * 0.12); bar.scale.set(Math.abs(xb - xa), sp * 0.22, sp * 0.1);
     bar.material.color.set(HSTR[str - 1]); bar.material.opacity = 0.2 + 0.7 * on * on;
   }
-  // hand box: the frets the fretting hand covers now
-  const p = nk.box.geometry.attributes.position, ba = lay.boundsAt(xa), bb = lay.boundsAt(xb), mz = nk.mounts['3:' + Math.max(1, Math.round(HV.lo))], z = (mz ? mz.p.z : 0.1) + 0.014, pad = sp * 0.35;
+  // bar lamps: every note of the bar being played stays lit on the fretboard — red = the first note of the bar, blue = the rest
+  let bi = Math.max(0, Math.floor(ts / s.secPerBar + 1e-6)); if (!(s.byBar[bi] || []).some(e => !e.tech.includes('t'))) bi++;   // an empty bar shows the one coming
+  const seen = {}, list = (s.byBar[bi] || []).filter(e => !e.tech.includes('t') && e.fret <= max), t1 = list.length ? list[0].t0 : 0; let nd = 0;
+  for (const e of list) {
+    const isOpen = e.fret === 0 && !e.tech.includes('x'), f = isOpen ? Math.max(0, Math.round(HV.lo) - 1) : e.fret, key = e.str + ':' + f, m = nk.mounts[key];
+    if (!m || seen[key] || nd >= nk.dots.length) continue; seen[key] = 1;
+    const dot = nk.dots[nd++], tex = nkBadge(nk, e.t0 - t1 < 0.012 ? '#FF2D2D' : '#1E6BFF', isOpen ? '0' : nkName(e));
+    if (dot.material.map !== tex) { dot.material.map = tex; dot.material.needsUpdate = true; }
+    dot.visible = true; dot.position.copy(m.p).addScaledVector(m.n, sp * 0.12); dot.scale.setScalar(sp * 1.2); dot.material.opacity = 0.96;
+  }
+  for (; nd < nk.dots.length; nd++) nk.dots[nd].visible = false;
+  // hand box: the frets the fretting hand covers now, as a neon frame
+  const ba = lay.boundsAt(xa), bb = lay.boundsAt(xb), mz = nk.mounts['3:' + Math.max(1, Math.round(HV.lo))], z = (mz ? mz.p.z : 0.1) + 0.02, pad = sp * 0.4;
   const pts = [[xa, ba.min - pad], [xb, bb.min - pad], [xb, bb.max + pad], [xa, ba.max + pad], [xa, ba.min - pad]];
-  pts.forEach((q, i) => p.setXYZ(i, q[0], q[1], z)); p.needsUpdate = true;
+  for (let q = 0; q < 4; q++) {
+    const [x1, y1] = pts[q], [x2, y2] = pts[q + 1], len = Math.hypot(x2 - x1, y2 - y1), ang = Math.atan2(y2 - y1, x2 - x1), [core, halo] = nk.box[q];
+    for (const [b, th] of [[core, sp * 0.085], [halo, sp * 0.34]]) { b.visible = true; b.position.set((x1 + x2) / 2, (y1 + y2) / 2, z); b.rotation.z = ang; b.scale.set(len + th, th, th * 0.5); }
+  }
   // the group is mirrored for e-on-top, so "nearest the camera" is the other edge then
   const rl = Math.round(HV.lo), rh = Math.round(HV.hi);
   for (const n of nk.nums) { const u = n.userData, inw = u.f >= rl && u.f <= rh; n.position.set(u.x, o.flip ? u.hi + sp * 1.25 : u.lo - sp * 1.25, z); n.material.opacity = inw ? 1 : 0.38; }
