@@ -56,3 +56,14 @@ In **Hero Mode › Jam** the same toggle (in the READY overlay and the HUD, with
 - **Scores are microphone-only:** a run played by the dev test player is never ranked, saved or paid. Saved data moved to `localStorage['gt-game-2']`, which drops the scores the old demo bot left behind.
 - The result panel shows how many picks the microphone heard, the gain and the latency in use.
 - Dev test: `?devbot=pro&devlat=150&devgain=0.03` puts a late, quiet "microphone" in front of the detector. With it, 23 of the first 34 notes of the Prelude were missed while the latency was being learned (12 → 152 ms) and none of the next 133.
+
+## Branch `concept/neck-gameplay` — Hero Mode "Neck 3D" gameplay concept
+
+A design experiment, kept off `main`. The classic highway makes a guitarist translate (lane = fret, colour = string, depth = time); here the 3D neck is the playfield.
+
+- **Where:** a gem drops straight onto the real string and fret of the 3D neck, with a target ring closing in on the fretboard; the lamp lights when it lands. Fret numbers run along the near edge, a white box marks the hand position, and the camera rides along with the hand. An open string lights the whole string inside the hand box.
+- **When:** height above the fretboard is the time left, and a scrolling tab strip under the neck (six strings, fret numbers moving to a "now" line) shows the rhythm and what comes after.
+- **Still a game:** score, combo, judgement pops, hit bursts, Ranked and Hold-On are unchanged.
+- The "Neck 3D / Classic" button in the HUD and the READY overlay switches between the two for comparison.
+
+Code: `neckplay.js` (new), small hooks in `hero.js`, `guitar3d.js`, `app.js`, CSS at the end of `index.html`. The 3D module and the model files are untouched.

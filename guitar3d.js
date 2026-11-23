@@ -90,7 +90,7 @@ function g3Release(stage) {
   try { stage.renderer.forceContextLoss(); } catch (e) {} // dispose keeps the WebGL context; browsers cap how many may be alive
 }
 function g3Dispose(sf) {
-  const o = G3.s[sf]; if (!o) return;
+  const o = G3.s[sf]; if (!o) return; nkDetach(o);
   o.dead = true; if (o.ro) o.ro.disconnect(); if (o.stage) g3Release(o.stage);
   o.el.remove(); delete G3.s[sf];
 }
@@ -117,6 +117,8 @@ function g3Mirror(o) {
 function g3Fit(o) {
   const st = o.stage, cam = st.camera, rp = st.model.report, b = rp.guitarBounds, fr = rp.fretComponents, r = o.canvas.getBoundingClientRect();
   if (!r.width || !r.height) return;
+  if (hNeckOn()) { o.nc = null; return nkCam(o); }   // Neck 3D gameplay drives the camera itself
+  cam.clearViewOffset();
   const v = G3_VIEWS.find(x => x.id === G3.view) || G3_VIEWS[0], neckY = fr[0].center[1];
   const asp = r.width / r.height, th = Math.tan(cam.fov * Math.PI / 360);
   let cx, cy, cz, sx, sy, depth;
@@ -146,7 +148,7 @@ function g3Fit(o) {
 function g3Bind(o) {
   const cv = o.canvas; let p = null;
   cv.addEventListener('pointerdown', ev => {
-    if (!o.ready) return;
+    if (!o.ready || hNeckOn()) return;
     p = { x: ev.clientX, y: ev.clientY, roll: ev.shiftKey || ev.button === 2 };
     try { cv.setPointerCapture(ev.pointerId); } catch (e) {}
     cv.classList.add('grab'); ev.preventDefault();
@@ -160,7 +162,7 @@ function g3Bind(o) {
   cv.addEventListener('contextmenu', ev => ev.preventDefault());
   cv.addEventListener('dblclick', () => { if (o.ready) g3Fit(o); });
   cv.addEventListener('wheel', ev => {
-    if (!o.ready) return; ev.preventDefault();
+    if (!o.ready || hNeckOn()) return; ev.preventDefault();
     const cam = o.stage.camera, tg = o.stage.controls.target, off = cam.position.clone().sub(tg);
     const len = Math.max(o.dist * 0.25, Math.min(o.dist * 2.5, off.length() * Math.exp(ev.deltaY * 0.0012)));
     cam.position.copy(tg).add(off.setLength(len));
@@ -183,6 +185,7 @@ function g3Frame(s, t) {
     const o = G3.s[sf]; if (!o.ready || !o.el.isConnected) continue;
     if (!frame) frame = g3Sample(s, t - s.audioOffset);
     const max = o.stage.fretCount; // A1 has 20 frets, RGB24 has 24
+    if (hNeckOn()) { nkCam(o); nkFrame(o, s, t - s.audioOffset); } else if (o.nk) { nkDetach(o); g3Fit(o); }
     o.stage.update(frame.states, frame.tick, { lights: frame.lights.filter(l => l.fret <= max) });
   }
 }

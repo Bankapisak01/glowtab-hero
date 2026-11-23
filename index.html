@@ -472,6 +472,13 @@ canvas{display:block;width:100%}
 .g3d-views button.on{background:var(--lime);color:#111}
 .hero.app .g3d-views{left:4px;bottom:0}
 .hero.app .g3d-views button{padding:3px 6px;font-size:9.5px}
+/* ---- concept: Neck 3D gameplay (neckplay.js) — the 3D neck fills the stage, the 2D canvas is an overlay ---- */
+.hero.neck .h-g3d,.hero.app.neck .h-g3d,.hero.port.neck .h-g3d{left:0;right:0;top:0;bottom:0;z-index:1}
+.hero.neck canvas[data-hero]{z-index:2;pointer-events:none}
+.hero.neck canvas.g3d-cv{cursor:default}
+.hero.neck .g3d-views,.hero.neck .g3d-name{display:none!important}
+.h-hud .btn.sm.hv.on,.h-ov .btn.hv.on{color:var(--lime);border-color:var(--limeLine)}
+.hero.port .h-hud .btn.sm.hv{order:6}
 </style>
 </head>
 <body>
@@ -589,6 +596,7 @@ canvas{display:block;width:100%}
 <script src="hero.js"></script>
 <script src="game.js"></script>
 <script src="guitar3d.js"></script>
+<script src="neckplay.js"></script>
 <script src="tab.js"></script>
 <script src="app.js"></script>
 </body>

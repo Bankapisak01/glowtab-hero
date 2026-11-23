@@ -31,6 +31,7 @@ function heroHTML(sf) {
         ${fresh ? '' : `<button class="btn" data-act="hrestart">${ic('prev')} Restart</button>`}
         <button class="btn" data-act="htab">${ic('chord')} Practice (Tab)</button>
         ${gm ? '' : heroHoldBtn('btn')}
+        ${hViewBtn('btn')}
         ${hFlipBtn('btn')}
         ${g3Btn('btn')}
         <button class="btn" data-act="hexit">${ic('x')} ออก</button>
@@ -40,7 +41,7 @@ function heroHTML(sf) {
       <p class="h-note">${gm ? gameNote(s) : G.hold ? 'Hold-On · backing track เล่นต่อ และหยุดรอที่โน้ตที่ยังไม่ได้เล่น — เล่นถูกโน้ตจึงไปต่อ · เสียงกีตาร์นำถูกปิดให้คุณเล่นแทน · ใส่หูฟัง' : `Jam mode · ไม่มีคะแนน — เล่นตามโน้ตที่วิ่งเข้ามา ${S.led ? 'ไฟบนคอกีตาร์ติดตามสีสาย' : 'ต่อกีตาร์เพื่อให้ไฟบนคอติดตามสีสาย'}`}</p>
     </div>` : '';
   const port = sf === 'app' && !S.app.land;
-  return `<div class="hero ${sf} ${port ? 'port' : ''}">
+  return `<div class="hero ${sf} ${port ? 'port' : ''} ${hNeckOn() ? 'neck' : ''}">
     <div class="h-bg" style="${bg}"></div><div class="h-beam"></div><div class="h-beam b2"></div>
     <canvas data-hero></canvas>
     ${g3Slot(sf)}
@@ -54,6 +55,7 @@ function heroHTML(sf) {
       <span class="grow"></span>
       <span class="h-tag ${gm ? 'rk' : ''}">${ic(gm ? 'trophy' : 'bolt', gm ? 0 : 1)} HERO · ${gm ? 'RANKED' : G.hold ? 'HOLD-ON' : 'JAM'}</span>${ledChip()}
       ${gm ? '' : heroHoldBtn('btn sm') + heroSkipBtn()}
+      ${hViewBtn('btn sm')}
       ${g3Btn('btn sm g3')}
       ${hFlipBtn('btn sm flip')}
       <button class="btn sm" data-act="htab" title="กลับไปดู Tab ที่ตำแหน่งเดิม">${ic('chord')} Tab</button>
@@ -87,6 +89,7 @@ function hPill(c, x, y, w, h) { rr(c, x - w / 2, y - h / 2, w, h, Math.min(h / 2
 function hAlpha(hex, a) { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`; }
 
 function drawHero(cv, s, t) {
+  if (hNeckOn()) return drawHeroNeck(cv, s, t);   // concept: the 3D neck is the playfield (neckplay.js)
   const [c, W, H] = setup(cv); c.clearRect(0, 0, W, H);
   const ts = t - s.audioOffset, spb = 60 / s.bpm;
   // portrait phone: fewer frets across (zooms out when the hand window is wide), longer runway above the board

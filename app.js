@@ -508,6 +508,7 @@ document.addEventListener('click', ev => {
     case 'htab': S[sf].screen = 'player'; break;
     case 'hflip': heroFlip(); break;
     case 'h3d': g3Toggle(); break;
+    case 'hview': hViewToggle(); break;
     case 'hexit': S[sf].screen = 'home'; if (S.app.screen === 'home' && S.web.screen === 'home') pause(); break;
     case 'hrestart': seek(S.loop ? barTime(S.loop.a) : 0, false); render(); play(); return;
     case 'learn': toast(`ไปที่ Learn › ${esc(SONGS[d.id].learn.course)}<br><code>litejam://learn/course/vinai-mts?song=${d.id}</code>`); return;
