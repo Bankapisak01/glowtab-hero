@@ -17,7 +17,7 @@ const GAME_ICONS = {
   bot: '<rect x="5" y="8" width="14" height="11" rx="3"/><path d="M12 4v4M9.5 13v2M14.5 13v2"/>',
 };
 const G = { mode: 'jam', mic: 'off' /* off | on | denied | bot */, botLv: 'pro', an: null, buf: null, det: null, node: null, stream: null, bus: null,
-  run: null, result: null, panel: null /* {kind:'result'|'board'|'shop', sf, id, tab} */, lat: 0.06, pop: null, lastTs: 0, bi: 0, bstr: {}, bl: [], muted: null, level: 0 };
+  listen: false, run: null, result: null, panel: null /* {kind:'result'|'board'|'shop', sf, id, tab} */, lat: 0.06, pop: null, lastTs: 0, bi: 0, bstr: {}, bl: [], muted: null, level: 0 };
 const BOT = { pro: { jit: 0.014, skip: 0, wrong: 0, label: 'มือโปร' }, mid: { jit: 0.04, skip: 0.06, wrong: 0.04, label: 'มือกลาง' } };
 const G_NOTE = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
 const G_J = [['PERFECT', '#A3E635'], ['GREAT', '#6FB1FF'], ['GOOD', '#F5B14A'], ['MISS', '#FF6B6B']];
@@ -117,6 +117,9 @@ function gameSet(mode) {
   G.mode = mode; G.run = null; G.result = null; G.panel = null; applyMix();
 }
 const gameOn = s => G.mode === 'game' && !!GAME_SONGS[s.id];
+// Practice › ตรวจโน้ต: the same detector marks each note right or wrong on the tab — no score, no combo, any song, any speed, loops included
+const G_BOTQ = new URLSearchParams(location.search).get('bot');   // ?bot=pro|mid: the demo bot stands in for the microphone
+const glistenOn = () => G.listen && (S.app.screen === 'player' || S.web.screen === 'player');
 const gready = () => G.mic === 'on' || G.mic === 'bot';
 
 /* ---------- one run ---------- */
@@ -129,7 +132,8 @@ function grunStart(s, ts) {
   if (G.det) { G.det.attackT = -9; G.det.noteT = -9; }
 }
 function gameFrame(s, t) {
-  if (!gameOn(s)) return;
+  const prac = !gameOn(s) && glistenOn();
+  if (!gameOn(s) && !prac) return;
   const ts = t - s.audioOffset;
   if (G.an && gready()) {
     G.an.getFloatTimeDomainData(G.buf);
@@ -144,12 +148,13 @@ function gameFrame(s, t) {
     G.lastTs = ts;
     if (G.mic === 'bot') gbotSched(s, t);
     if (gready()) {
-      const tn = ts - G.lat; DET.feed(G.det, G.buf, tn);
+      const tn = ts - G.lat * rate(); DET.feed(G.det, G.buf, tn);
       const out = DET.step(G.run, G.det, G.buf, tn);
       if (out.length) { const g = out[out.length - 1]; G.pop = { j: g.j, dt: g.dt, at: performance.now() }; }
+      if (prac) for (const g of out) atMark(g.ev[0].bar, g.ev[0].pos / 4, g.st === 1 ? 'at-ok' : 'at-bad');
     }
     const r = G.run;
-    if (r.done && !S.loop && ts > r.g[r.g.length - 1].t + 1.2) { gameFinish(); return; }
+    if (!prac && r.done && !S.loop && ts > r.g[r.g.length - 1].t + 1.2) { gameFinish(); return; }
   }
   // HUD
   const r = G.run, live2 = (k, v) => document.querySelectorAll(`[data-live=${k}]`).forEach(el => { if (el.textContent !== v) el.textContent = v; });
@@ -157,10 +162,14 @@ function gameFrame(s, t) {
   live2('gcombo', r && r.combo > 1 ? `${r.combo} COMBO${DET.multOf(r.combo) > 1 ? ' ×' + DET.multOf(r.combo) : ''}` : '');
   live2('gacc', r && r.i ? (DET.acc(r) * 100).toFixed(1) + '%' : '–');
   live2('gmic', G.det && G.det.note ? G_NOTE[G.det.note % 12] + (Math.floor(G.det.note / 12) - 1) : '–');
+  if (prac) {   // right / wrong for the note just played, and nothing else
+    const p = G.pop, on = p && performance.now() - p.at < 900, txt = !on ? '' : p.j === 3 ? '✕ พลาด' : '✓ ถูก' + (Math.abs(p.dt) > 0.06 ? (p.dt < 0 ? ' · เร็วไป' : ' · ช้าไป') : '');
+    document.querySelectorAll('[data-live=pjudge]').forEach(el => { if (el.textContent !== txt) { el.textContent = txt; el.className = !on ? '' : p.j === 3 ? 'bad' : 'ok'; } });
+  }
   document.querySelectorAll('[data-live=glevel]').forEach(el => el.style.width = Math.min(100, G.level * 260) + '%');
 }
 // the player moved the playhead: the attempt starts over from there
-function gameSeek() { G.run = null; gbotStop(); }
+function gameSeek() { G.run = null; gbotStop(); atMarkClear(); }
 // the audio reached the end: whatever was not played is a miss
 function gameSongEnd(s) { if (gameOn(s) && G.run && !G.result && !S.loop) gameFinish(true); }
 function gameFinish(fromEnd) {
@@ -291,9 +300,21 @@ function gameDetail(s) {
     <button class="btn sm" data-act="gboard" data-id="${s.id}">อันดับ</button><button class="btn sm pri" data-act="hgame" data-id="${s.id}">${ic('play', 1)} เล่น Ranked</button></div>`;
 }
 
+/* ---------- Practice › ตรวจโน้ต ---------- */
+const listenTog = () => `<button class="tog ${G.listen ? 'on' : ''}" data-act="plisten" aria-pressed="${G.listen}" title="ฟังกีตาร์ผ่านไมค์ แล้วบอกว่าเล่นถูกหรือพลาดทีละโน้ต · ไม่มีคะแนน">${ic('mic')}<span>ตรวจโน้ต</span></button>`;
+const listenInfo = () => !G.listen ? '' : `<span class="pl-info">${ic(G.mic === 'bot' ? 'bot' : 'mic')} <b data-live="gmic">–</b><i class="g-lv"><i data-live="glevel"></i></i><b data-live="pjudge"></b></span>`;
+async function glistenToggle() {
+  if (G.listen) { G.listen = false; G.run = null; gbotStop(); atMarkClear(); render(); return; }
+  if (G_BOTQ && BOT[G_BOTQ]) await gbotOn(G_BOTQ); else if (!gready()) await gmicOn();
+  if (!gready()) { toast('ใช้ไมค์ไม่ได้ — อนุญาตไมค์ที่แถบที่อยู่ของเบราว์เซอร์ แล้วกด “ตรวจโน้ต” อีกครั้ง'); return; }
+  G.listen = true; G.run = null; atMarkClear(); render();
+  toast('ตรวจโน้ตเปิดแล้ว · โน้ตที่เล่นถูกเป็น<b style="color:#22c55e">สีเขียว</b> พลาดเป็น<b style="color:#FF6B6B">สีแดง</b> · ไม่มีคะแนน · ใส่หูฟังหรือปิดเสียง Guide');
+}
+
 /* ---------- actions (called first by the click handler in app.js; true = handled) ---------- */
 function gameAction(a, d, sf) {
   switch (a) {
+    case 'plisten': glistenToggle(); return true;
     case 'gmode': gameSet(d.v); render(); return true;
     case 'gmic': gmicOn(); return true;
     case 'gbot': if (G.mic === 'bot' && G.botLv === d.v) { G.mic = 'off'; gbotStop(); render(); } else gbotOn(d.v); return true;

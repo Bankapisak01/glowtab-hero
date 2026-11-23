@@ -156,6 +156,17 @@ function atLoopDraw(o) {
   o.lp.innerHTML = h;
 }
 
+/* Practice › ตรวจโน้ต: colour the beat at (bar, fraction of the bar) on every surface. The marks stay until the
+ * note is judged again (next loop pass) or the player seeks. */
+function atMark(bar, f, cls) {
+  for (const sf in AT.s) {
+    const o = AT.s[sf], b = o.ready && o.bars[bar]; if (!b) continue;
+    const p = b.pts.find(x => Math.abs(x[0] - f) < 0.012); if (!p) continue;
+    o.host.querySelectorAll('.b' + p[2]).forEach(el => { el.classList.remove('at-ok', 'at-bad'); el.classList.add(cls); });
+  }
+}
+function atMarkClear() { for (const sf in AT.s) AT.s[sf].host.querySelectorAll('.at-ok,.at-bad').forEach(el => el.classList.remove('at-ok', 'at-bad')); }
+
 /* Pointer position → the bar under it (nearest system first, then nearest bar on it). */
 function atHit(o, ev) {
   const r = o.inner.getBoundingClientRect(), k = o.inner.offsetWidth / r.width; // the stage is scaled to fit the window

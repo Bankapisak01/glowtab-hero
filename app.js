@@ -323,7 +323,7 @@ function appPlayer() {
       <button class="playb" data-act="toggle" aria-label="Play / Pause">${ic(E.playing ? 'pause' : 'play', 1)}</button>
       <button class="ib" data-act="next" aria-label="Next section">${ic('next')}</button>
       <span class="time" data-live="time">0:00</span><div class="grow">${progress(s)}</div>
-      ${toggles(s, 'land')}
+      ${toggles(s, 'land')}${listenTog()}
       <button class="tog" data-act="mixer">${ic('mixer')}<span>${s.stems.length > 1 ? 'Band' : 'Audio'}</span></button>
     </div></div>${sheet}`;
   return `<div class="a-pl">
@@ -331,11 +331,11 @@ function appPlayer() {
       <div class="ttl grow ell">${esc(s.title)}<small class="ell">${esc(s.artist)} · ${s.bpm | 0} BPM · ${esc(s.key)}</small></div>${ledChip()}${rotBtn}</div>
     <div class="blk" style="padding-top:2px"><div class="secs" data-keep="a-secs">${sectionChips(s)}</div></div>
     <div class="tabwrap">${atSlot('app', 'horizontal', 'height:196px')}<div class="count" data-live="count"></div>${loader()}</div>
-    <div class="readout"><span>Bar <b data-live="bar">–</b> / ${s.bars} · <span data-live="secname">–</span></span>${abHTML()}</div>
+    <div class="readout"><span>Bar <b data-live="bar">–</b> / ${s.bars} · <span data-live="secname">–</span></span>${listenInfo()}${abHTML()}</div>
     <div class="blk" style="padding-top:4px"><canvas data-fret height="104" style="height:104px"></canvas></div>
     <div class="blk row" style="padding-top:2px"><div class="pills grow">${pills}</div>${s.stems.length > 1 ? `<button class="btn sm" data-act="mixer">${ic('mixer')} Mixer</button>` : ''}</div>
     <div class="foot">
-      <div class="row" style="gap:6px">${toggles(s, false)}</div>
+      <div class="row" style="gap:6px">${toggles(s, false)}${listenTog()}</div>
       <div style="margin-top:8px">${progress(s)}<div class="row" style="justify-content:space-between"><span class="time" data-live="time">0:00</span><span class="time">${fmt(E.dur || barTime(s.bars))}</span></div></div>
       <div class="row" style="justify-content:center;gap:26px;margin-top:2px">
         <button class="ib" data-act="prev" aria-label="Previous section">${ic('prev')}</button>
@@ -372,7 +372,7 @@ function webPlayer() {
         ${s.sections.map(x => `<button class="sec ${S.loop && S.loop.secId === x.id ? 'sel' : ''}" data-act="sec" data-sec="${x.id}" data-secid="${x.id}"><span>${esc(x.label)} <small>bar ${x.start + 1}–${x.end + 1}</small></span>${dots(x.diff)}</button>`).join('')}</div>
     </div>
     <div class="w-fret"><div class="row" style="justify-content:space-between;margin-bottom:4px"><span class="muted" style="font-size:11.5px">LED preview · Bar <b data-live="bar" style="color:var(--text)">–</b> / ${s.bars} · <span data-live="secname">–</span></span>
-      <span class="legend"><span><i style="background:var(--lime)"></i>ตอนนี้</span><span><i style="background:var(--orange)"></i>ถัดไป</span></span></div><canvas data-fret height="92" style="height:92px"></canvas></div>
+      ${listenInfo()}<span class="legend"><span><i style="background:var(--lime)"></i>ตอนนี้</span><span><i style="background:var(--orange)"></i>ถัดไป</span>${G.listen ? '<span><i style="background:#22c55e"></i>ถูก</span><span><i style="background:#FF6B6B"></i>พลาด</span>' : ''}</span></div><canvas data-fret height="92" style="height:92px"></canvas></div>
     <div class="w-dock">
       <button class="ib" data-act="prev" aria-label="Previous section">${ic('prev')}</button>
       <button class="playb" data-act="toggle" aria-label="Play / Pause">${ic(E.playing ? 'pause' : 'play', 1)}</button>
@@ -380,6 +380,7 @@ function webPlayer() {
       <span class="time" data-live="time" style="width:34px;text-align:right">0:00</span><div class="grow">${progress(s)}</div><span class="time">${fmt(E.dur || barTime(s.bars))}</span>
       ${toggles(s, true)}
       <button class="tog ${S.follow ? 'on' : ''}" data-act="follow">${ic('follow')}<span>Follow</span></button>
+      ${listenTog()}
     </div></div>`;
 }
 
@@ -442,7 +443,7 @@ function drawFret(cv, s, t) {
   let lo = 0, hi = s.onsets.length; while (lo < hi) { const m = (lo + hi) >> 1; if (s.onsets[m] > ts + 0.01) hi = m; else lo = m + 1; }
   const nt = s.onsets[lo], r = Math.min(8.5, gap * .48);
   if (nt != null && nt - ts < 4) for (const e of s.ev) { if (e.t0 > nt + 0.002) break; if (Math.abs(e.t0 - nt) < 0.002 && !e.tech.includes('t')) { const [x, y] = px(e); c.strokeStyle = '#F5B14A'; c.lineWidth = 2; c.beginPath(); c.arc(x, y, r - 1, 0, 7); c.stroke(); } }
-  for (const e of s.ev) { if (e.t0 > ts) break; if (ts < e.t1) { const [x, y] = px(e); c.shadowColor = '#A3E635'; c.shadowBlur = 12; c.fillStyle = '#A3E635'; c.beginPath(); c.arc(x, y, r, 0, 7); c.fill(); c.shadowBlur = 0; c.fillStyle = '#111'; c.font = '700 9.5px ' + FONT; c.textBaseline = 'middle'; c.fillText(e.tech.includes('x') ? 'x' : String(e.fret), x, y + .5); c.textBaseline = 'alphabetic'; } }
+  for (const e of s.ev) { if (e.t0 > ts) break; if (ts < e.t1) { const [x, y] = px(e), col = !G.listen || !e.gs ? '#A3E635' : e.gs === 1 ? '#22c55e' : '#FF6B6B'; c.shadowColor = col; c.shadowBlur = 12; c.fillStyle = col; c.beginPath(); c.arc(x, y, r, 0, 7); c.fill(); c.shadowBlur = 0; if (G.listen && e.gs === 1) { c.strokeStyle = '#fff'; c.lineWidth = 2; c.stroke(); } c.fillStyle = '#111'; c.font = '700 9.5px ' + FONT; c.textBaseline = 'middle'; c.fillText(e.tech.includes('x') ? 'x' : String(e.fret), x, y + .5); c.textBaseline = 'alphabetic'; } }
 }
 
 /* ---------- frame loop ---------- */
