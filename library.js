@@ -223,6 +223,7 @@ function officialHTML(sf) {
       <button class="cont" data-act="open" data-id="${last.id}">${coverHTML(last, '', false)}
         <div class="grow"><div class="muted" style="font-size:11px">เล่นต่อ</div><div class="ell" style="font-weight:650">${esc(last.title)}</div><div class="muted ell" style="font-size:12px">${esc(last.artist)}</div></div>
         <span class="playb" style="width:40px;height:40px;font-size:16px">${ic('play', 1)}</span></button>`
+      + gameShelf(sf)
       + shelf('แนะนำ', 'เล่นได้จริงใน prototype', CAT.filter(c => c.real))
       + oshelfOrder().map(col => { const s = col === 'starter' ? STARTER : COLS.find(x => x[0] === col), list = oshelfList(col);
         return shelf(s[1], s[2], list, `<button class="lnk" data-act="ocol" data-v="${col}">ดูทั้งหมด ${nfmt(list.length)} ${ic('chev')}</button>`); }).join('')

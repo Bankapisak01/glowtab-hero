@@ -26,3 +26,15 @@ Published at https://bankapisak01.github.io/glowtab-hero/ (repo `Bankapisak01/gl
 (`tools/art_src/`, source and credit in the script). LJS001 has three covers: `cover.jpg` Neon Duotone (default),
 `cover_b.jpg` Pop Poster, `cover_c.jpg` Old Master — switch with `?art=a|b|c`. `hero.jpg` is the backdrop (no lettering).
 `COVER[id].img` / `.hero` in `app.js` point at them. Key content stays inside the middle 800 px square because cards crop.
+
+## Ranked (game mode in Hero Mode)
+
+Some Official Tabs (`GAME_SONGS` in `game.js`: LJS001, ART001, VT001) can be played for a score. Hero Mode › READY has a Jam / Ranked switch; the home page has a "Ranked ประจำสัปดาห์" shelf.
+
+- `detect.js` — note detection and judging, no DOM (YIN pitch tracker + a tone-rise test against neighbouring semitones). Runs in the browser and in node.
+- `game.js` — microphone input, the demo bot, runs, coins, leaderboard, shop, panels. Leaderboard, wallet and shop are mock data in `localStorage['gt-game']`.
+- `node tools/test_detect.js [songId] [case,case]` — synthesises whole-song performances (perfect, human, every 2nd note, wrong pitch, silence) and prints what the detector judged. About 20 s per song.
+- Demo bot ("บอทมือโปร" / "บอทมือกลาง") plays the tab through the same detector, for reviewing without a guitar. The tab must be visible: a background tab is throttled and drops notes.
+- A ranked run is the whole song at 100 % with no pause, seek or loop; anything else is a practice score.
+
+Spec: `../2026-11-23_GlowTab_Ranked_Game_Mode_Spec.md`. Not tested with a real guitar through a real microphone yet.

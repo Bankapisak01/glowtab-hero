@@ -2,7 +2,7 @@
  * Same song, same audio engine and same clock as Practice; only the picture changes:
  * a fretboard across the bottom, notes flying in from the back along their fret lane,
  * coloured by string, with a bracket showing the hand position.
- * Layout follows the live Jam Hero game (jamhero.litejam.com). Jam HUD: no score, no miss marks.
+ * Layout follows the live Jam Hero game (jamhero.litejam.com). Jam = no score, no miss marks; Ranked (game.js) adds both.
  * Loaded before app.js; everything here is called at render / frame time.
  */
 'use strict';
@@ -21,11 +21,13 @@ function heroHTML(sf) {
   const start = S.loop ? barTime(S.loop.a) : 0, fresh = Math.abs(E.t - start) < 0.06;
   const hb = COVER[s.id].hero || s.cover || COVER[s.id].img;
   const bg = hb ? `background-image:url(${hb})` : `background:${COVER[s.id].bg}`;
-  const ov = !E.playing && !E.loading ? `<div class="h-ov">
+  const gm = gameOn(s);
+  const ov = gm && G.panel ? gameHeroPanel() : !E.playing && !E.loading ? `<div class="h-ov">
       <div class="h-brand">LITEJAM HERO</div>
       <div class="h-ttl">${fresh ? 'READY' : 'PAUSED'}</div>
+      ${gameSeg(s)}${gm ? gameReady(s) : ''}
       <div class="h-row">
-        <button class="btn pri" data-act="toggle">${ic('play', 1)} ${fresh ? 'Start' : 'Resume'}</button>
+        <button class="btn pri" data-act="toggle" ${gm && !gready() ? 'disabled' : ''}>${ic('play', 1)} ${fresh ? 'Start' : 'Resume'}</button>
         ${fresh ? '' : `<button class="btn" data-act="hrestart">${ic('prev')} Restart</button>`}
         <button class="btn" data-act="htab">${ic('chord')} Practice (Tab)</button>
         ${hFlipBtn('btn')}
@@ -34,7 +36,7 @@ function heroHTML(sf) {
       </div>
       <div class="h-opt">${toggles(s, 'land')}</div>
       <div class="secs h-secs" data-keep="h-secs-${sf}">${sectionChips(s)}</div>
-      <p class="h-note">Jam mode · ยังไม่มีคะแนน — เล่นตามโน้ตที่วิ่งเข้ามา ${S.led ? 'ไฟบนคอกีตาร์ติดตามสีสาย' : 'ต่อกีตาร์เพื่อให้ไฟบนคอติดตามสีสาย'}</p>
+      <p class="h-note">${gm ? gameNote(s) : `Jam mode · ไม่มีคะแนน — เล่นตามโน้ตที่วิ่งเข้ามา ${S.led ? 'ไฟบนคอกีตาร์ติดตามสีสาย' : 'ต่อกีตาร์เพื่อให้ไฟบนคอติดตามสีสาย'}`}</p>
     </div>` : '';
   const port = sf === 'app' && !S.app.land;
   return `<div class="hero ${sf} ${port ? 'port' : ''}">
@@ -47,8 +49,9 @@ function heroHTML(sf) {
       <div class="h-card"><b class="ell">${esc(s.title)}</b><small class="ell">${esc(s.artist)}</small>
         <div>BPM: <b>${s.bpm | 0}</b><i></i>Key: <b>${esc(s.key)}</b>${S.speed !== 100 ? `<i></i>${S.speed}%` : ''}</div></div>
       <div class="h-now"><span data-live="secname">–</span><b data-live="hchord"></b></div>
+      ${gm ? gameHud() : ''}
       <span class="grow"></span>
-      <span class="h-tag">${ic('bolt', 1)} HERO · JAM</span>${ledChip()}
+      <span class="h-tag ${gm ? 'rk' : ''}">${ic(gm ? 'trophy' : 'bolt', gm ? 0 : 1)} HERO · ${gm ? 'RANKED' : 'JAM'}</span>${ledChip()}
       ${g3Btn('btn sm g3')}
       ${hFlipBtn('btn sm flip')}
       <button class="btn sm" data-act="htab" title="กลับไปดู Tab ที่ตำแหน่งเดิม">${ic('chord')} Tab</button>
@@ -162,10 +165,11 @@ function drawHero(cv, s, t) {
   c.beginPath(); c.moveTo(xa + tk, ya); c.lineTo(xa, ya); c.lineTo(xa, yb); c.lineTo(xa + tk, yb); c.stroke();
   c.beginPath(); c.moveTo(xb - tk, ya); c.lineTo(xb, ya); c.lineTo(xb, yb); c.lineTo(xb - tk, yb); c.stroke();
 
-  // notes: far first
+  // notes: far first — in Ranked a missed note goes grey and a hit note bursts white
+  const GM = gameOn(s);
   const pw = cell * (port ? 0.66 : 0.46), ph = Math.min(gap * 0.8, cell * (port ? 0.42 : 0.26));
   const noteAt = (e, k, a, lit) => {
-    const dead = e.tech.includes('x'), open = e.fret === 0 && !dead, col = dead ? '#cfcfcf' : HSTR[e.str - 1];
+    const dead = e.tech.includes('x'), open = e.fret === 0 && !dead, col = GM && e.gs === 2 ? '#5b5b62' : dead ? '#cfcfcf' : HSTR[e.str - 1];
     const [x, y] = pr(xN(e), yOf(e.str), k), w = (open ? (HV.hi - HV.lo + 1) * cell * 0.92 : pw) * k, h = ph * k;
     c.globalAlpha = a;
     if (e.t1 - e.t0 > 0.45) { // sustain tail along the lane
@@ -185,8 +189,10 @@ function drawHero(cv, s, t) {
   for (let i = fly.length - 1; i >= 0; i--) { const e = fly[i], d = (e.t0 - ts) / LOOK; noteAt(e, kOf(d), Math.min(1, (1 - d) / 0.14), false); }
   for (const e of on) {
     const live = ts < e.t1, a = live ? 1 : 1 - (ts - e.t1) / 0.16; noteAt(e, 1, a, live);
-    const q = (ts - e.t0) / 0.28; if (q < 1) { const x = xN(e), y = yOf(e.str); c.strokeStyle = hAlpha(HSTR[e.str - 1], 1 - q); c.lineWidth = 2.5; c.beginPath(); c.arc(x, y, ph * (0.6 + q * 1.5), 0, 7); c.stroke(); }
+    const q = (ts - e.t0) / 0.28; if (q < 1 && !(GM && e.gs !== 1)) { const x = xN(e), y = yOf(e.str); c.strokeStyle = GM ? `rgba(255,255,255,${1 - q})` : hAlpha(HSTR[e.str - 1], 1 - q); c.lineWidth = 2.5; c.beginPath(); c.arc(x, y, ph * (0.6 + q * 1.5), 0, 7); c.stroke(); }
   }
+
+  if (GM) gameDraw(c, W, H, bTop, gap);
 
   // string names (fixed at the left edge)
   const lw = port ? 28 : 40; c.fillStyle = 'rgba(16,16,18,.9)'; rr(c, -8, bTop - gap * 0.62, lw + 8, gap * 6.24, 8); c.fill(); c.strokeStyle = 'rgba(255,255,255,.22)'; c.lineWidth = 1; c.stroke();

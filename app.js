@@ -3,7 +3,8 @@
  *   #app-root  = Litejam App › Play › GlowTab (portrait phone)
  *   #web-root  = glowtab.litejam.com (desktop)
  * Audio is the master clock (Surface Map R4): tab cursor, LED preview and section state all
- * derive from the audio position. The tab is drawn by alphaTab (tab.js); this file owns the clock. No scoring anywhere (R1).
+ * derive from the audio position. The tab is drawn by alphaTab (tab.js); this file owns the clock.
+ * Scoring exists only in Hero Mode › Ranked (game.js); Practice and Jam stay score-free (R1).
  */
 'use strict';
 const SONGS = window.GT_SONGS;
@@ -67,7 +68,7 @@ const P = {
   flip: '<path d="M7 4v16M7 4L3.5 7.5M7 4l3.5 3.5M17 20V4M17 20l-3.5-3.5M17 20l3.5-3.5"/>',
   x: '<path d="M6 6l12 12M18 6L6 18"/>', rot: '<rect x="8" y="4" width="8" height="16" rx="2"/><path d="M3 10a9 9 0 0 1 3-6M3 4v3h3M21 14a9 9 0 0 1-3 6M21 20v-3h-3"/>', follow: '<circle cx="12" cy="12" r="8"/><path d="M15 9l-2 5-4 1 2-5z"/>',
 };
-Object.assign(P, LIB_ICONS);
+Object.assign(P, LIB_ICONS, GAME_ICONS);
 const ic = (n, f) => `<svg class="ic${f ? ' f' : ''}" viewBox="0 0 24 24">${P[n]}</svg>`;
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const fmt = t => { t = Math.max(0, t); return Math.floor(t / 60) + ':' + String(Math.floor(t % 60)).padStart(2, '0'); };
@@ -182,7 +183,7 @@ async function play(withCount = true) {
 function pause() { if (!E.playing) return; E.t = curT(); E.playing = false; stopSrc(); E.countFrom = 0; render(); }
 function seek(t, keep = true) {
   const was = E.playing; if (was) { E.t = curT(); stopSrc(); E.playing = false; }
-  E.t = Math.max(0, Math.min(E.dur || 1e9, t)); E.countFrom = 0;
+  E.t = Math.max(0, Math.min(E.dur || 1e9, t)); E.countFrom = 0; gameSeek();
   if (was && keep) startSrc(E.ctx.currentTime + 0.03);
 }
 async function setSpeed(sp) {
@@ -224,6 +225,7 @@ function badges(s) {
   if (s.kind === 'backing') h += `<span class="chip lime">BACKING</span>`;
   if (s.kind === 'tab') h += `<span class="chip">TAB ONLY</span>`;
   if (s.learn) h += `<span class="chip or">COURSE</span>`;
+  if (GAME_SONGS[s.id]) h += `<span class="chip rk">${ic('trophy')} RANKED</span>`;
   if (s.tier === 'pro') h += `<span class="chip pro">${ic('lock')} PRO</span>`;
   return h;
 }
@@ -252,6 +254,7 @@ function detailHTML(s) {
       <button class="btn pri" data-act="open" data-id="${s.id}">${ic('play', 1)}Practice<small>เล่นกับ tab + LED</small></button>
       <button class="btn hb" data-act="hero" data-id="${s.id}">${ic('bolt', 1)}Hero Mode<small>Litejam Hero</small></button>
     </div>
+    ${gameDetail(s)}
     <div class="h2" style="margin-top:16px"><h3 style="font-size:14px">ซ้อมเป็นท่อน</h3><span>${s.sections.length} ท่อน</span></div>
     <div class="secl">${s.sections.map(x => `<button class="sec" data-act="open" data-id="${s.id}" data-sec="${x.id}"><span>${esc(x.label)} <small>bar ${x.start + 1}–${x.end + 1}</small></span>${dots(x.diff)}</button>`).join('')}</div>`;
 }
@@ -300,7 +303,7 @@ function appHTML() {
   const sheet = a.sheet ? `<div class="sheet-bg" data-act="closeDetail"><div class="sheet" data-stop><div class="grab"></div>${detailHTML(SONGS[a.sheet])}</div></div>` : '';
   return status + `<div class="a-head"><h2>Play</h2>${ledChip()}</div>
     <div style="padding:0 16px 6px"><div class="seg"><button class="${a.seg === 'songs' ? 'on' : ''}" data-act="seg" data-v="songs">Songs</button><button class="${a.seg === 'glowtab' ? 'on' : ''}" data-act="seg" data-v="glowtab">GlowTab</button></div></div>
-    <div class="a-body" data-keep="a-home-${a.seg === 'glowtab' ? lu.page : 'songs'}">${a.seg === 'glowtab' ? glow : songs}</div>${nav}${sheet}${libOverlay('app')}`;
+    <div class="a-body" data-keep="a-home-${a.seg === 'glowtab' ? lu.page : 'songs'}">${a.seg === 'glowtab' ? glow : songs}</div>${nav}${sheet}${libOverlay('app')}${gamePanel('app')}`;
 }
 function appPlayer() {
   const s = song(), m = S.mix[s.id];
@@ -350,7 +353,7 @@ function webHTML() {
   if (w.screen === 'hero' && S.songId) return heroHTML('web');
   if (w.screen === 'player' && S.songId) return nav + webPlayer();
   const modal = w.modal ? `<div class="modal-bg" data-act="closeDetail"><div class="modal" data-stop>${detailHTML(SONGS[w.modal])}</div></div>` : '';
-  return nav + `<div class="w-body" data-keep="w-home-${LU.web.page}">${libHome('web')}</div>${modal}${libOverlay('web')}`;
+  return nav + `<div class="w-body" data-keep="w-home-${LU.web.page}">${libHome('web')}</div>${modal}${libOverlay('web')}${gamePanel('web')}`;
 }
 function webPlayer() {
   const s = song();
@@ -449,7 +452,7 @@ function frame(once) {
     const s = song(); let t = curT();
     if (E.playing) {
       if (S.loop && t >= barTime(S.loop.b + 1) - 0.005) { E.t = barTime(S.loop.a); startSrc(E.ctx.currentTime + 0.02); t = E.t; }
-      else if (t >= E.dur - 0.02) { E.playing = false; stopSrc(); E.t = S.loop ? barTime(S.loop.a) : 0; t = E.t; setTimeout(render); }
+      else if (t >= E.dur - 0.02) { gameSongEnd(s); E.playing = false; stopSrc(); E.t = S.loop ? barTime(S.loop.a) : 0; t = E.t; setTimeout(render); }
       if (E.playing && s.kind === 'tab') scheduleTab(s, t);
       if (S.metro && E.playing) { // schedule metronome clicks a little ahead
         const k = Math.floor(barPos(t + 0.12 * rate()) * 4);
@@ -457,6 +460,7 @@ function frame(once) {
       }
     }
     const bp = barPos(t), bi = Math.max(0, Math.min(s.bars - 1, Math.floor(bp))), sec = s.secOfBar(bi);
+    gameFrame(s, t);
     atFrame(s, t);
     document.querySelectorAll('canvas[data-hero]').forEach(cv => { if (cv.clientWidth) drawHero(cv, s, t); });
     g3Frame(s, t);
@@ -485,6 +489,7 @@ document.addEventListener('click', ev => {
   if (stopEl && !stopEl.contains(el)) return; // click inside sheet, action is the backdrop
   const a = el.dataset.act, sf = surfaceOf(el), d = el.dataset;
   const s = S.songId ? song() : null;
+  if (gameAction(a, d, sf)) return;
   if (libAction(a, d, sf)) { render(); return; }
   switch (a) {
     case 'view': S.view = d.v; break;
