@@ -1,0 +1,4 @@
+.DS_Store
+__pycache__/
+# internal: holds links to private Drive folders
+tools/build_official_tabs_packages.py
