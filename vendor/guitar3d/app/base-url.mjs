@@ -4,7 +4,9 @@
  * import.meta.env.BASE_URL from its `base` option; Node tests fall back to "/".
  */
 export const BASE_URL =
-  (typeof import.meta.env !== "undefined" && import.meta.env.BASE_URL) || "/";
+  (typeof import.meta.env !== "undefined" && import.meta.env.BASE_URL) ||
+  globalThis.LJ_BASE_URL || // prototype patch: no bundler here, index.html sets it so a subpath host (GitHub Pages) works
+  "/";
 
 /** Prefix a root-relative path ("/assets/x" or "assets/x") with the base path. */
 export function withBase(path) {

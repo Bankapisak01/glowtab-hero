@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>GlowTab — App Play Mode × Web · Prototype V1</title>
 <!-- no bundler: lets the vendored 3D guitar module import "three" (see guitar3d.js) -->
+<script>window.LJ_BASE_URL = new URL(".", location.href).pathname; /* where assets/ lives, for the 3D guitar module */</script>
 <script type="importmap">{"imports":{"three":"./vendor/three/build/three.module.js","three/addons/":"./vendor/three/examples/jsm/"}}</script>
 <style>
 :root{
