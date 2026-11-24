@@ -60,3 +60,11 @@ In **Hero Mode › Jam** the same toggle (in the READY overlay and the HUD, with
 ### Neck 3D concept on the site: `/neck/`
 
 GitHub Pages serves only `main`, so the concept from the branch `concept/neck-gameplay` is published as the sub-page `neck/`: `python3 tools/publish_neck.py` copies the few files that differ on that branch into `neck/` and points everything else at the site root with `<base href="../">`. The main page is not touched. Re-run the script and commit `neck/` after changing the branch.
+
+### Hold-On: one pick, one note (2026-11-24)
+
+Reported with a real guitar: one pick moved Hold-On on by two or three notes, and sometimes it moved with no pick at all. Three causes, all fixed:
+- the auto-gain normalised room noise to full scale when nobody played → `ggain` now tracks the room level (`G.nf`), lets only real sound set the gain, and hands the detector silence when the input is not above the room;
+- a fading note that the pitch tracker lost for a frame and found again counted as a new note → `noteT` in `detect.js` now changes only after an attack or a move to a different pitch;
+- crackle in a decaying string counted as an attack → Hold-On needs a pick (`d.pickT`): an attack that also makes the signal 30 % louder than the last ~100 ms. Hammer-ons and slides pass on a pitch change instead. The next note is listened for 0.18 s after the one before.
+Checked with the dev test player through a quiet (×0.03), noisy input on the Prelude: no pick → no move in 6 s; one pick → exactly one note; picking every note → moves on; stop → stays. `tools/test_detect.js` results unchanged.

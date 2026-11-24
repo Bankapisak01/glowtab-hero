@@ -15,7 +15,7 @@
   const HANN = new Float32Array(N); for (let i = 0; i < N; i++) HANN[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / (N - 1));
 
   function create(sr) {
-    return { sr, rms: 0, slow: 0, attackT: -9, lastAtk: -9, midi: 0, conf: 0, note: 0, noteT: -9, yb: new Float32Array(1100) };
+    return { sr, rms: 0, slow: 0, attackT: -9, lastAtk: -9, pickT: -9, hist: [0, 0, 0, 0, 0, 0], last: 0, midi: 0, conf: 0, note: 0, noteT: -9, yb: new Float32Array(1100) };
   }
 
   // YIN on the last 2048 samples → [midi (float), confidence]
@@ -47,10 +47,19 @@
     d.rms = Math.sqrt(e / 2048); const sh = Math.sqrt(es / 384);
     if (d.rms > 0.008 && sh > d.slow * 1.5 + 0.0012 && t - d.lastAtk > 0.07) { d.attackT = t - 0.004; d.lastAtk = t; }
     d.slow = sh > d.slow ? d.slow + (sh - d.slow) * 0.5 : d.slow * 0.9 + sh * 0.1;
+    // a real pick also makes the whole signal louder than it was a moment ago. A ringing string only fades, so the
+    // crackle in its decay can look like an attack but never like a pick. Hold-On moves on only for a pick.
+    let ew = 0; for (let i = N - 512; i < N; i++) ew += buf[i] * buf[i];
+    const now = Math.sqrt(ew / 512), floor = Math.min.apply(null, d.hist);
+    if (d.attackT >= t - 0.06 && now > floor * 1.3 + 0.006 && t - d.pickT > 0.16) d.pickT = d.attackT;
+    d.hist.push(now); d.hist.shift();
     if (d.rms < 0.008) { d.midi = 0; d.conf = 0; d.note = 0; return; }
     const [m, c] = yin(d, buf); d.midi = m; d.conf = c;
     const r = c > 0.8 ? Math.round(m) : 0;
-    if (r !== d.note || d.attackT > d.noteT) { d.note = r; d.noteT = d.attackT > t - 0.16 ? d.attackT : t - 0.03; }
+    // a note is new after an attack, or when the pitch moves to a different one (hammer-on, slide). The tracker losing
+    // a fading note for a frame and finding it again is the same note, not a new one.
+    if (d.attackT > d.noteT || (r && r !== d.last)) d.noteT = d.attackT > t - 0.16 ? d.attackT : t - 0.03;
+    if (r) d.last = r; d.note = r;
   }
 
   /* ---------- a run: the notes of one song grouped by onset, judged against the detector ---------- */
