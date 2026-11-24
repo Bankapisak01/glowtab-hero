@@ -56,3 +56,7 @@ In **Hero Mode › Jam** the same toggle (in the READY overlay and the HUD, with
 - **Scores are microphone-only:** a run played by the dev test player is never ranked, saved or paid. Saved data moved to `localStorage['gt-game-2']`, which drops the scores the old demo bot left behind.
 - The result panel shows how many picks the microphone heard, the gain and the latency in use.
 - Dev test: `?devbot=pro&devlat=150&devgain=0.03` puts a late, quiet "microphone" in front of the detector. With it, 23 of the first 34 notes of the Prelude were missed while the latency was being learned (12 → 152 ms) and none of the next 133.
+
+### Neck 3D concept on the site: `/neck/`
+
+GitHub Pages serves only `main`, so the concept from the branch `concept/neck-gameplay` is published as the sub-page `neck/`: `python3 tools/publish_neck.py` copies the few files that differ on that branch into `neck/` and points everything else at the site root with `<base href="../">`. The main page is not touched. Re-run the script and commit `neck/` after changing the branch.
