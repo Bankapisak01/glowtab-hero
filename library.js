@@ -57,6 +57,17 @@ const CAT = (() => {
     { id: 'LJS001', real: true, artistId: 'litejam', cols: ['classics'], genres: ['Classical'], kt: 'C', km: 'major', play: 'lead', level: 'Intermediate', kind: 'stems', pro: false, pop: 99, added: 3, len: 131 },
     { id: 'VT001', real: true, artistId: 'vinai-t', cols: ['signature'], genres: ['Rock', 'Pop'], scales: ['Major', 'Pentatonic minor'], kt: 'D', km: 'major', play: 'lead', level: 'Intermediate', kind: 'backing', pro: false, pop: 98, added: 40, len: 245 },
     { id: 'FS001', real: true, artistId: 'x-note', cols: ['fingerstyle'], fs: 'arr', genres: ['Pop'], level: 'Beginner', kind: 'tab', pro: false, pop: 96, added: 2, len: 224 },
+    // demo songs for trying the game (data/songs_demo.js). The two Jack Thammarat songs and the two Canons replace their placeholders below.
+    { id: 'LJS005', real: true, artistId: 'jack-thammarat', cols: ['signature'], genres: ['Rock'], scales: ['Major', 'Pentatonic Major'], kt: 'D', km: 'major', play: 'lead', level: 'Advanced', kind: 'backing', pro: false, pop: 95, added: 1, len: 302 },
+    { id: 'LJS004', real: true, artistId: 'jack-thammarat', cols: ['signature'], genres: ['Rock', 'Blues'], scales: ['Major', 'Pentatonic Major'], kt: 'E', km: 'major', play: 'lead', level: 'Advanced', kind: 'backing', pro: false, pop: 94, added: 1, len: 266 },
+    { id: 'DMO01', real: true, artistId: 'capcom', cols: ['classics'], genres: ['Rock'], play: 'lead', level: 'Advanced', kind: 'tab', pro: false, pop: 93, added: 1, len: 87 },
+    { id: 'DMO04', real: true, artistId: 'eric-clapton', cols: ['classics'], genres: ['Rock', 'Blues'], kt: 'G', km: 'major', play: 'lead', level: 'Beginner', kind: 'tab', pro: false, pop: 92, added: 1, len: 218 },
+    { id: 'DMO06', real: true, artistId: 'eagles', cols: ['classics'], genres: ['Country'], kt: 'G', km: 'major', play: 'lead', level: 'Beginner', kind: 'tab', pro: false, pop: 91, added: 1, len: 200 },
+    { id: 'DMO05', real: true, artistId: 'eagles', cols: ['classics'], genres: ['Rock'], kt: 'B', km: 'minor', play: 'rhythm', level: 'Intermediate', kind: 'tab', pro: false, pop: 90, added: 1, len: 168 },
+    { id: 'DMO03', real: true, artistId: 'green-day', cols: ['classics'], genres: ['Rock'], kt: 'F', km: 'minor', play: 'rhythm', level: 'Intermediate', kind: 'tab', pro: false, pop: 89, added: 1, len: 237 },
+    { id: 'DMO02', real: true, artistId: 'luck-v', cols: ['fingerstyle'], fs: 'arr', genres: ['Rock'], level: 'Intermediate', kind: 'tab', pro: false, pop: 88, added: 1, len: 54 },
+    { id: 'LJS007', real: true, artistId: 'litejam', cols: ['fingerstyle', 'classics'], fs: 'graded', lv: 1, genres: ['Classical'], kt: 'C', km: 'major', level: 'Beginner', kind: 'tab', pro: false, pop: 87, added: 5, len: 48 },
+    { id: 'LJS013', real: true, artistId: 'litejam', cols: ['fingerstyle', 'classics'], fs: 'graded', lv: 2, genres: ['Classical'], kt: 'C', km: 'major', level: 'Beginner', kind: 'tab', pro: false, pop: 86, added: 6, len: 52 },
   ].map(c => ({ ...base, ...c, title: G[c.id].title, artist: G[c.id].artist, bpm: G[c.id].bpm | 0 }));
   for (const c of out) G[c.id].tier = c.pro ? 'pro' : 'free'; // Free/PRO now follows the shelf rule (Classics free, one free taster per artist)
   // graded fingerstyle set (keys = my reading of the GP key signatures, used as is — Q17)
@@ -74,6 +85,7 @@ const CAT = (() => {
   // signature songs waiting for their contracts: shown as "coming soon" (in the real product only after the artist agrees — Q29)
   [['Amen', 'Vinai T', 'vinai-t', 'D', 'major', 80, ['Rock']], ['Falling In Love Again', 'Jack Thammarat', 'jack-thammarat', 'E', 'major', 96, ['Rock', 'Blues']], ['On The Way', 'Jack Thammarat', 'jack-thammarat', 'D', 'major', 160, ['Rock']]]
     .forEach(([title, artist, artistId, kt, km, bpm, genres], i) => out.push({ ...base, id: 'LJS00' + (3 + i), title, artist, artistId, cols: ['signature'], genres, scales: ['Major', 'Pentatonic Major'], kt, km, play: 'lead', level: 'Intermediate', kind: 'backing', pro: true, vis: 'soon', pop: 93 - i, added: 1, bpm, len: 240, hue: 200 + i * 40 }));
+  { const seen = new Set(); for (let i = 0; i < out.length; i++) if (seen.has(out[i].id)) out.splice(i--, 1); else seen.add(out[i].id); }   // a real song wins over its placeholder
   for (const c of out) c.primary = c.cols[0];
 
   const A = ['Midnight', 'Golden', 'Paper', 'Silver', 'Quiet', 'Electric', 'Summer', 'Broken', 'Little', 'Open', 'Northern', 'Velvet', 'Neon', 'Lonely', 'Wild', 'Blue', 'Morning', 'Last', 'Sweet', 'Distant', 'Crimson', 'Empty', 'Rainy', 'Hidden', 'Slow', 'Bright'];
@@ -218,13 +230,13 @@ function officialHTML(sf) {
       <div class="row" style="justify-content:flex-end;gap:8px"><button class="btn sm ghost" data-act="oclear">ล้างตัวกรอง</button><button class="btn sm pri" data-act="opanel">ดูผลลัพธ์</button></div></div>`;
   if (!browsing) {
     const last = SONGS[S.last];
-    const shelf = (title, sub, list, act) => !list.length ? '' : `<div class="h2"><h3>${title}${sub ? `<small>${sub}</small>` : ''}</h3>${act || ''}</div><div class="${web ? 'w-grid' : 'hscroll'}">${list.slice(0, web ? 5 : 6).map(ocard).join('')}</div>`;
+    const shelf = (title, sub, list, act, all) => !list.length ? '' : `<div class="h2"><h3>${title}${sub ? `<small>${sub}</small>` : ''}</h3>${act || ''}</div><div class="${web ? 'w-grid' : 'hscroll'}">${(all ? list : list.slice(0, web ? 5 : 6)).map(ocard).join('')}</div>`;
     h += `<div class="lvpick"><span>${LIB.level ? 'ระดับของฉัน' : 'เลือกระดับของคุณ'}</span>${LEVELS.map(l => `<button class="${(LIB.level || '') === l ? 'on' : ''}" data-act="olevel" data-v="${l}">${l}</button>`).join('')}</div>
       <button class="cont" data-act="open" data-id="${last.id}">${coverHTML(last, '', false)}
         <div class="grow"><div class="muted" style="font-size:11px">เล่นต่อ</div><div class="ell" style="font-weight:650">${esc(last.title)}</div><div class="muted ell" style="font-size:12px">${esc(last.artist)}</div></div>
         <span class="playb" style="width:40px;height:40px;font-size:16px">${ic('play', 1)}</span></button>`
       + gameShelf(sf)
-      + shelf('แนะนำ', 'เล่นได้จริงใน prototype', CAT.filter(c => c.real))
+      + shelf('แนะนำ', 'เล่นได้จริงใน prototype · ' + CAT.filter(c => c.real).length + ' เพลง', CAT.filter(c => c.real), '', true)
       + oshelfOrder().map(col => { const s = col === 'starter' ? STARTER : COLS.find(x => x[0] === col), list = oshelfList(col);
         return shelf(s[1], s[2], list, `<button class="lnk" data-act="ocol" data-v="${col}">ดูทั้งหมด ${nfmt(list.length)} ${ic('chev')}</button>`); }).join('')
       + `<button class="btn" style="width:100%;margin-top:16px" data-act="oallsort" data-v="popular">ดู Official Tabs ทั้งหมด ${nfmt(CAT.length)} tabs</button>`;

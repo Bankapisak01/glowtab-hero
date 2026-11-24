@@ -9,7 +9,9 @@
  * Loaded after detect.js and hero.js, before app.js; everything is called at render / frame time.
  */
 'use strict';
-const GAME_SONGS = { LJS001: 1, ART001: 1, VT001: 1 };   // single-note lines the detector reads reliably
+// single-note lines the detector reads reliably (tools/test_detect.js: a perfect performance scores 97 % or more).
+// Of the demo songs: Wonderful Tonight 100 %, Desperado 99.4 %, On The Way 99.3 % are in; Air Man Theme (88 %, 16ths at 187 bpm) is not.
+const GAME_SONGS = { LJS001: 1, ART001: 1, VT001: 1, LJS005: 1, DMO04: 1, DMO06: 1 };
 const GAME_ICONS = {
   coin: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/>',
   mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',

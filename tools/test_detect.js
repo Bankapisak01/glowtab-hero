@@ -1,7 +1,7 @@
 /* Offline check of detect.js: synthesise a performance of each song (same plucked-string model as the prototype),
  * run the detector frame by frame at 60 Hz and print what it judged.   node tools/test_detect.js [songId] */
 'use strict';
-global.window = {}; require('../data/songs.js');
+global.window = {}; require('../data/songs.js'); require('../data/songs_demo.js');
 const DET = require('../detect.js'), SONGS = window.GT_SONGS, SR = 48000;
 const only = process.argv[2], pick = process.argv[3];
 let seed = 7; const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296, gauss = () => (rnd() + rnd() + rnd() + rnd() - 2) * 0.87;

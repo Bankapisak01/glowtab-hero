@@ -8,7 +8,7 @@
  */
 'use strict';
 const SONGS = window.GT_SONGS;
-const ORDER = ['LJS001', 'ART001', 'VT001', 'FS001'];
+const ORDER = Object.keys(SONGS);   // the four packaged songs, then the demo songs of data/songs_demo.js (tools/add_demo_songs.js)
 const TUNING = [64, 59, 55, 50, 45, 40]; // string 1..6
 const STEM_COLOR = { drums: '#F5B14A', bass: '#6FB1FF', synth: '#B48CFF', rhythm: '#FF8A6B', guide: '#A3E635', artist: '#A3E635', backing: '#6FB1FF', tabsynth: '#B48CFF' };
 // cover art style for Classics: a = Neon Duotone (default), b = Pop Poster, c = Old Master — try with ?art=b (tools/make_art.py draws them)
@@ -71,6 +71,8 @@ const P = {
 Object.assign(P, LIB_ICONS, GAME_ICONS);
 const ic = (n, f) => `<svg class="ic${f ? ' f' : ''}" viewBox="0 0 24 24">${P[n]}</svg>`;
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+// demo songs have no artwork: a coloured card with the title, the hue taken from the id
+for (const id of ORDER) if (!COVER[id]) { let h = 0; for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) % 360; const t = SONGS[id].title; COVER[id] = { bg: `linear-gradient(135deg,hsl(${h} 46% 27%),hsl(${(h + 50) % 360} 38% 12%))`, big: esc(t).replace(' · ', '<br>').replace(/^(\S+ \S+) (.+)$/, '$1<br>$2'), fs: t.length > 16 ? 19 : 23 }; }
 const fmt = t => { t = Math.max(0, t); return Math.floor(t / 60) + ':' + String(Math.floor(t % 60)).padStart(2, '0'); };
 
 /* ---------- time helpers (audio seconds at 100 % <-> bars) ---------- */
@@ -225,6 +227,7 @@ function badges(s) {
   if (s.kind === 'backing') h += `<span class="chip lime">BACKING</span>`;
   if (s.kind === 'tab') h += `<span class="chip">TAB ONLY</span>`;
   if (s.learn) h += `<span class="chip or">COURSE</span>`;
+  if (s.demo && s.rights.startsWith('Third-party')) h += `<span class="chip red">DEMO</span>`;
   if (GAME_SONGS[s.id]) h += `<span class="chip rk">${ic('trophy')} RANKED</span>`;
   if (s.tier === 'pro') h += `<span class="chip pro">${ic('lock')} PRO</span>`;
   return h;
@@ -248,7 +251,7 @@ function detailHTML(s) {
     <div class="row muted" style="margin-top:12px;font-size:12.5px;gap:14px;flex-wrap:wrap"><span>${s.bpm | 0} BPM</span><span>${esc(s.key)}</span><span>${s.bars - s.countInBars} bars</span><span>${esc(s.level)} ${dots(s.difficulty)}</span></div>
     ${odetailExtra(s.id)}
     <p style="margin:10px 0 0;font-size:13px">${what}</p>
-    ${s.kind === 'performance' || s.kind === 'tab' ? `<p class="muted" style="margin:6px 0 0;font-size:11.5px">⚠︎ ${esc(s.rights)}</p>` : ''}
+    ${s.kind === 'performance' || s.kind === 'tab' || s.demo ? `<p class="muted" style="margin:6px 0 0;font-size:11.5px">⚠︎ ${esc(s.rights)}</p>` : ''}
     <div class="acts">
       <button class="btn" data-act="learn" data-id="${s.id}" ${s.learn ? '' : 'disabled'}>${ic('learn')}Learn<small>${s.learn ? `บทเรียน ${s.learn.done}/${s.learn.chapters}` : 'ยังไม่มี course'}</small></button>
       <button class="btn pri" data-act="open" data-id="${s.id}">${ic('play', 1)}Practice<small>เล่นกับ tab + LED</small></button>
