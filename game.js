@@ -9,7 +9,9 @@
  * Loaded after detect.js and hero.js, before app.js; everything is called at render / frame time.
  */
 'use strict';
-const GAME_SONGS = { LJS001: 1, ART001: 1, VT001: 1 };   // single-note lines the detector reads reliably
+// single-note lines the detector reads reliably (tools/test_detect.js: a perfect performance scores 97 % or more).
+// Of the demo songs: Wonderful Tonight 100 %, Desperado 99.4 %, On The Way 99.3 % are in; Air Man Theme (88 %, 16ths at 187 bpm) is not.
+const GAME_SONGS = { LJS001: 1, ART001: 1, VT001: 1, LJS005: 1, DMO04: 1, DMO06: 1 };
 const GAME_ICONS = {
   coin: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/>',
   mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
@@ -17,7 +19,7 @@ const GAME_ICONS = {
   bot: '<rect x="5" y="8" width="14" height="11" rx="3"/><path d="M12 4v4M9.5 13v2M14.5 13v2"/>',
 };
 const G = { mode: 'jam', mic: 'off' /* off | on | denied | bot */, botLv: 'pro', an: null, buf: null, det: null, node: null, stream: null, bus: null,
-  offs: [], pk: 0, gain: 1, picks: 0, latMoved: 0, atkSeen: -9,
+  offs: [], pk: 0, nf: null, gain: 1, picks: 0, latMoved: 0, atkSeen: -9,
   listen: false, hold: false, hstep: false /* Hold-On is running */, hw: null /* Hero Hold-On: the band is stopped on a note */, fx: null, run: null, result: null, panel: null /* {kind:'result'|'board'|'shop', sf, id, tab} */, lat: 0.06, pop: null, lastTs: 0, bi: 0, bstr: {}, bl: [], muted: null, level: 0 };
 const BOT = { pro: { jit: 0.014, skip: 0, wrong: 0, label: 'มือโปร' }, mid: { jit: 0.04, skip: 0.06, wrong: 0.04, label: 'มือกลาง' } };
 const G_NOTE = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
@@ -76,11 +78,19 @@ function gattach(node) {
  *             last picks moves G.lat, and the value is kept for this browser. Ranked judges timing, so it needs this. */
 const glatLoad = d => { try { const v = parseFloat(localStorage.getItem('gt-lat')); if (v >= 0 && v <= 0.45) return v; } catch (e) {} return d; };
 function ggain() {
-  let p = 0; const b = G.buf, n = DET.N; for (let i = n - 2048; i < n; i++) { const a = b[i] < 0 ? -b[i] : b[i]; if (a > p) p = a; }
-  G.pk = Math.max(p, (G.pk || 0) * 0.9997);
+  const b = G.buf, n = DET.N; let p = 0, e = 0;
+  for (let i = n - 2048; i < n; i++) { const a = b[i] < 0 ? -b[i] : b[i]; if (a > p) p = a; e += a * a; }
+  const rms = Math.sqrt(e / 2048);
+  // the room: follows the quietest the input gets, quickly down and very slowly up
+  // (only a small rise counts as the room getting louder — a guitar playing must not raise it)
+  G.nf = G.nf == null ? rms : rms < G.nf ? G.nf + (rms - G.nf) * 0.2 : rms < G.nf * 2 + 0.001 ? G.nf + (rms - G.nf) * 0.002 : G.nf;
+  const sig = rms > G.nf * 3 + 0.0006;            // something is actually sounding above the room
+  // the gain is set by how loud the guitar gets, never by the room: only real sound moves the peak, and it is held
+  if (sig && p > (G.pk || 0)) G.pk = p; else G.pk = (G.pk || 0) * 0.99995;
   const k = G.pk > 0.004 ? Math.min(25, Math.max(1, 0.25 / G.pk)) : 1; G.gain = k;
-  if (k > 1.01) for (let i = 0; i < n; i++) b[i] *= k;
-  G.level = Math.max(p * k, G.level * 0.9);
+  if (!sig) b.fill(0);                            // room noise is silence to the detector, however much gain is on
+  else if (k > 1.01) for (let i = 0; i < n; i++) b[i] *= k;
+  G.level = Math.max(sig ? p * k : 0, G.level * 0.9);
 }
 function glatLearn(r, d, tn) {
   if (d.lastAtk === G.atkSeen || tn - d.lastAtk < 0.08) return;
@@ -236,15 +246,18 @@ function gholdPlay() {
   if (gholdHero()) { gmuteLead(song()); applyMix(); play(); } else { if (E.playing) pause(); render(); }
 }
 function gholdHit(r, g, d) {
-  g.st = 1; for (const e of g.ev) e.gs = 1; d.attackT = -9;
+  g.st = 1; for (const e of g.ev) e.gs = 1; d.attackT = -9; d.pickT = -9;
   atMark(g.ev[0].bar, g.ev[0].pos / 4, 'at-ok'); G.fx = { ev: g.ev, at: performance.now() }; G.pop = { j: 0, dt: 0, at: performance.now() }; gholdFx();
   if (++r.i >= r.g.length) r.done = true;
 }
-// a ringing string must not pass the next note: it takes a new pick attack, or a clear new pitch, made after the note came up
+// a ringing string must not pass the next note: it takes a new pick made after the note came up
 function gholdHeard(r, g, d, now) {
   if (now < g.open) return false;
   const T = g.t; g.t = g.open + g.w + 0.02; const th = DET.heard(r, g, d, G.buf, now); g.t = T;
-  return th != null && (d.attackT >= g.open - 0.01 || (g.midi.length === 1 && d.conf > 0.8 && Math.abs(d.midi - g.midi[0]) < 0.5 && d.noteT >= g.open - 0.01));
+  if (th == null) return false;
+  if (d.pickT >= g.open - 0.01) return true;                                   // one pick, one note
+  // hammer-ons and slides have no pick: the pitch itself has to move onto the note
+  return g.legato && g.midi.length === 1 && d.conf > 0.85 && Math.abs(d.midi - g.midi[0]) < 0.5 && d.noteT >= g.open - 0.01;
 }
 function gholdResume(s, g) { G.hw = null; E.t = g.t + s.audioOffset; startSrc(E.ctx.currentTime + 0.02); G.lastTs = g.t; G.bi = s.ev.findIndex(e => e.t0 > g.t + 0.012); if (G.bi < 0) G.bi = s.ev.length; }
 function gholdFlow(s, t, ts, now, d) {
@@ -255,7 +268,7 @@ function gholdFlow(s, t, ts, now, d) {
   const r = G.run, w = G.hw; if (r.done) return;
   if (G.mic === 'bot' && !w) gbotSched(s, t);
   const g = r.g[r.i];
-  if (g.open == null) { g.open = now + 0.1; g.base = null; }                           // listens for the next note as soon as the one before is done
+  if (g.open == null) { g.open = now + 0.18; g.base = null; }                          // listens for the next note once the one before has settled
   if (gholdHeard(r, g, d, now)) { gholdHit(r, g, d); if (w) gholdResume(s, g); return; }
   if (!w && ts >= g.t + 0.1 * rate()) {                                                 // its beat has passed and it was not played: stop the band on it
     E.t = g.t + s.audioOffset; stopSrc(); E.playing = false; E.countFrom = 0; G.hw = { at: now };
@@ -276,7 +289,7 @@ function gholdFrame(s, t, ts) {
   }
   const g = r.g[r.i];
   if (g.open == null) {   // this note is now the one to play: park the playhead on it
-    g.open = now + 0.1; g.base = null; g.seen = d.attackT; E.t = g.t + s.audioOffset + 0.001;
+    g.open = now + 0.18; g.base = null; g.seen = d.attackT; E.t = g.t + s.audioOffset + 0.001;
     if (G.mic === 'bot') for (const e of g.ev) gbotPluck(e, E.ctx.currentTime + 0.4);
   }
   if (gholdHeard(r, g, d, now)) gholdHit(r, g, d);

@@ -69,3 +69,34 @@ A design experiment, kept off `main`. The classic highway makes a guitarist tran
 Code: `neckplay.js` (new), small hooks in `hero.js`, `guitar3d.js`, `app.js`, CSS at the end of `index.html`. The 3D module and the model files are untouched.
 
 Second pass (user feedback, 2026-11-24): neon hand box; every note of the current bar stays lit on the fretboard as a round badge with its note name (red = first note of the bar, blue = the rest); falling notes are note-name badges in string colours that grow from a small bead to full size as they land.
+### Neck 3D concept on the site: `/neck/`
+
+GitHub Pages serves only `main`, so the concept from the branch `concept/neck-gameplay` is published as the sub-page `neck/`: `python3 tools/publish_neck.py` copies the few files that differ on that branch into `neck/` and points everything else at the site root with `<base href="../">`. The main page is not touched. Re-run the script and commit `neck/` after changing the branch.
+
+### Hold-On: one pick, one note (2026-11-24)
+
+Reported with a real guitar: one pick moved Hold-On on by two or three notes, and sometimes it moved with no pick at all. Three causes, all fixed:
+- the auto-gain normalised room noise to full scale when nobody played → `ggain` now tracks the room level (`G.nf`), lets only real sound set the gain, and hands the detector silence when the input is not above the room;
+- a fading note that the pitch tracker lost for a frame and found again counted as a new note → `noteT` in `detect.js` now changes only after an attack or a move to a different pitch;
+- crackle in a decaying string counted as an attack → Hold-On needs a pick (`d.pickT`): an attack that also makes the signal 30 % louder than the last ~100 ms. Hammer-ons and slides pass on a pitch change instead. The next note is listened for 0.18 s after the one before.
+Checked with the dev test player through a quiet (×0.03), noisy input on the Prelude: no pick → no move in 6 s; one pick → exactly one note; picking every note → moves on; stop → stays. `tools/test_detect.js` results unchanged.
+
+### Demo songs for trying the game (2026-11-24)
+
+Ten more playable songs, converted from Guitar Pro files (.gp3 / .gp4 / .gp) by `tools/add_demo_songs.js` into `data/songs_demo.js` (+ `data/gp/<id>.gp`). The script reads every Guitar Pro version with the vendored alphaTab, so the judged notes are the drawn notes. Run it as `node tools/add_demo_songs.js "<folder with the GP files>" [--audio <ffmpeg>]`.
+
+| id | song | part | sound | Ranked |
+| --- | --- | --- | --- | --- |
+| LJS005 | On The Way — Jack Thammarat | overdriven guitar (track 2) | backing track | yes (99.3 %) |
+| LJS004 | Falling In Love Again — Jack Thammarat | guitar | backing track | no (22 % chords) |
+| DMO01 | Air Man Theme (Mega Man 2) | lead guitar | tab synth | no (88 %: 16ths at 187 bpm) |
+| DMO04 | Wonderful Tonight — Eric Clapton | lead guitar | tab synth | yes (100 %) |
+| DMO06 | Desperado — Eagles | vocal melody | tab synth | yes (99.4 %) |
+| DMO05 | Hotel California — Eagles | guitar 1 | tab synth | no (17 % chords) |
+| DMO03 | Holiday — Green Day | rhythm guitar 1 | tab synth | no (91 % chords) |
+| DMO02 | Snake Man Theme (Mega Man 3) | fingerstyle | tab synth | no |
+| LJS007 / LJS013 | Canon LV1 / LV2 | fingerstyle | tab synth | no |
+
+- The two Jack Thammarat songs and the two Canons replace their catalogue placeholders; the six `DMO` songs are third-party tabs with no licence, marked DEMO, for internal testing only.
+- **Backing-track sync is an estimate from the audio, not checked by ear.** On The Way: bar 1 at 3.745 s (after a two-bar count-in: clicks at 0.75, 1.50, then 2.24, 2.62, 2.99, 3.37 s). Falling In Love Again: bar 1 at 1.87 s (the first sound of the file). Change `offset` in the script if the notes run early or late.
+- Swing ("triplet feel") in the file is applied to the note times; repeats are played straight through once; Wonderful Tonight's final ritardando is ignored.
